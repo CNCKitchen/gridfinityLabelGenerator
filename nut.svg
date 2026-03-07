@@ -16,11 +16,11 @@
      id="defs1">
     <clipPath
        clipPathUnits="userSpaceOnUse"
-       id="clipPath19">
+       id="clipPath4">
       <path
          d="M 0,200 H 200 V 0 H 0 Z"
-         transform="translate(-31.000001,-100.00001)"
-         id="path19" />
+         transform="translate(-2.9500001,-100.06361)"
+         id="path4" />
     </clipPath>
   </defs>
   <sodipodi:namedview
@@ -35,23 +35,23 @@
     <inkscape:page
        x="0"
        y="0"
-       inkscape:label="8"
-       id="page17"
+       inkscape:label="2"
+       id="page2"
        width="266.66666"
        height="266.66666"
-       margin="3.4666533 3.4666667 3.4666667 3.46668"
+       margin="21.418133 3.9333334 21.247999 3.9333467"
        bleed="0" />
   </sodipodi:namedview>
   <g
      id="layer-MC0"
      inkscape:groupmode="layer"
      inkscape:label="Layer 1"
-     transform="translate(-2006.6667)">
+     transform="translate(-286.66665)">
     <path
-       id="path18"
-       d="m 0,0 c 11.3,4.7 21,13.2 27,23.7 6.1,10.5 9,22.3 7.5,36 9.8,-7.4 21.9,-11.5 34.1,-11.5 12.2,0 23.8,3.4 34.9,11.5 -1.6,-12.2 1,-24.7 7,-35.3 C 116.6,13.9 125.3,5.5 138,0 c -11.3,-4.8 -21,-13.3 -27,-23.7 -6.1,-10.5 -9,-22.3 -7.5,-36 -9.8,7.4 -21.9,11.5 -34.1,11.5 -12.2,0 -23.8,-3.3 -34.9,-11.5 1.6,12.2 -1,24.7 -7,35.2 C 21.4,-13.9 12.7,-5.5 0,0 m -28.4,0 c 0,53.8 43.6,97.4 97.4,97.4 53.8,0 97.4,-43.6 97.4,-97.4 0,-53.8 -43.6,-97.4 -97.4,-97.4 -53.8,0 -97.4,43.6 -97.4,97.4"
+       id="path3"
+       d="M 0,0 24.3,42 48.5,84 H 97 145.5 L 169.8,42 194.1,0 169.8,-42 145.5,-84 H 97 48.5 l -24.2,42 z m 50.1,0 c 0,25.9 21,46.9 46.9,46.9 25.9,0 46.9,-21 46.9,-46.9 0,-25.9 -21,-46.9 -46.9,-46.9 -25.9,0 -46.9,21 -46.9,46.9"
        style="fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:none"
-       transform="matrix(1.3333333,0,0,-1.3333333,2048,133.33333)"
-       clip-path="url(#clipPath19)" />
+       transform="matrix(1.3333333,0,0,-1.3333333,290.6,133.24853)"
+       clip-path="url(#clipPath4)" />
   </g>
 </svg>

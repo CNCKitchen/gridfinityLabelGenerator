@@ -82,6 +82,13 @@ button:disabled {
   gap: 8px;
 }
 
+.size-badge {
+  margin-left: auto;
+  font-size: 0.75rem;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+
 .error {
   color: #fca5a5;
 }

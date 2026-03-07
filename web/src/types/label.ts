@@ -6,6 +6,10 @@ export interface LabelInput {
   iconSvg: string;
 }
 
+export type LabelCategory = "fasteners" | "inserts";
+
 export interface PredefinedLabel extends LabelInput {
   icon: string;
+  category: LabelCategory;
+  size: string;
 }

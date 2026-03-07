@@ -41,7 +41,7 @@ function ensureInitialized(): Promise<void> {
   _init = (async () => {
     const [stlResp, fontResp] = await Promise.all([
       fetch(`${base}GridfinityBinLabel.stl`),
-      fetch(`${base}helvetiker_regular.typeface.json`),
+      fetch(`${base}helvetiker_bold.typeface.json`),
     ]);
     if (!stlResp.ok || !fontResp.ok) {
       throw new Error("Failed to load label assets");
@@ -98,21 +98,22 @@ function toWorldBox(box: Rect): Rect {
   };
 }
 
-function buildIconMesh(iconSvg: string): Mesh {
-  const parsed = svgLoader.parse(iconSvg);
+function buildSvgMeshInBox(svgString: string, box: Rect): Mesh | null {
+  if (!svgString) return null;
+  const parsed = svgLoader.parse(svgString);
   const shapes: Shape[] = [];
   for (const p of parsed.paths) {
     shapes.push(...SVGLoader.createShapes(p));
   }
-  if (shapes.length === 0) throw new Error("Invalid icon SVG");
+  if (shapes.length === 0) return null;
 
   const extruded = toExtrudedMesh(shapes, EMBOSS_HEIGHT);
   const sourceBounds = getMeshBounds(extruded);
   const sourceWidth = sourceBounds.max.x - sourceBounds.min.x;
   const sourceHeight = sourceBounds.max.y - sourceBounds.min.y;
-  if (sourceWidth <= 0 || sourceHeight <= 0) throw new Error("Invalid icon SVG bounds");
+  if (sourceWidth <= 0 || sourceHeight <= 0) return null;
 
-  const target = toWorldBox(SVG_BOX);
+  const target = toWorldBox(box);
   const targetSize = getBoxSize(target);
   const scale = Math.min(targetSize.width / sourceWidth, targetSize.height / sourceHeight);
 
@@ -124,8 +125,39 @@ function buildIconMesh(iconSvg: string): Mesh {
   const tx = target.x1 + (targetSize.width - scaledWidth) / 2 - scaledBounds.min.x;
   const ty = target.y1 + (targetSize.height - scaledHeight) / 2 - scaledBounds.min.y;
 
-  extruded.position.set(tx, ty, topZ);
+  extruded.position.set(tx, ty, topZ - 0.4);
   return extruded;
+}
+
+function buildIconMesh(iconSvg: string): Mesh | null {
+  return buildSvgMeshInBox(iconSvg, SVG_BOX);
+}
+
+function buildIconTextMeshes(text: string): Mesh[] {
+  const target = toWorldBox(SVG_BOX);
+  const targetSize = getBoxSize(target);
+
+  // Split e.g. "TX10" → ["TX", "10"] so each part fills its own half and renders larger
+  const match = text.match(/^([A-Za-z]+)(\d+.*)$/);
+  if (match) {
+    const [, prefix, number] = match;
+    const GAP = 1.0; // mm gap between the two lines
+    const halfHeight = (targetSize.height - GAP) / 2;
+    const botY = target.y1;
+    const topY = target.y1 + halfHeight + GAP;
+
+    const topSize = chooseTextSizeForBox(prefix, targetSize.width, halfHeight);
+    const topMesh = createTextLineMesh(prefix, topSize, target.x1, topY, targetSize.width, halfHeight);
+
+    const botSize = chooseTextSizeForBox(number, targetSize.width, halfHeight);
+    const botMesh = createTextLineMesh(number, botSize, target.x1, botY, targetSize.width, halfHeight);
+
+    return [topMesh, botMesh].filter(Boolean) as Mesh[];
+  }
+
+  const size = chooseTextSizeForBox(text, targetSize.width, targetSize.height);
+  const mesh = createTextLineMesh(text, size, target.x1, target.y1, targetSize.width, targetSize.height);
+  return mesh ? [mesh] : [];
 }
 
 function chooseTextSizeForBox(text: string, maxWidth: number, maxHeight: number): number {
@@ -176,7 +208,7 @@ function createTextLineMesh(
 
   const tx = x + (width - scaledWidth) / 2 - bounds.min.x * scale;
   const ty = y + (height - scaledHeight) / 2 - bounds.min.y * scale;
-  mesh.position.set(tx, ty, topZ);
+  mesh.position.set(tx, ty, topZ - 0.4);
   return mesh;
 }
 
@@ -186,15 +218,21 @@ function buildTextMeshes(label: LabelInput): Mesh[] {
   const topSize = getBoxSize(topBox);
   const bottomSize = getBoxSize(bottomBox);
 
-  const topFontSize = chooseTextSizeForBox(label.line1, topSize.width, topSize.height);
-  const bottomFontSize = chooseTextSizeForBox(label.line2, bottomSize.width, bottomSize.height);
-
   const meshes: Mesh[] = [];
-  const line1Mesh = createTextLineMesh(label.line1, topFontSize, topBox.x1, topBox.y1, topSize.width, topSize.height);
-  const line2Mesh = createTextLineMesh(label.line2, bottomFontSize, bottomBox.x1, bottomBox.y1, bottomSize.width, bottomSize.height);
 
+  const topFontSize = chooseTextSizeForBox(label.line1, topSize.width, topSize.height);
+  const line1Mesh = createTextLineMesh(label.line1, topFontSize, topBox.x1, topBox.y1, topSize.width, topSize.height);
   if (line1Mesh) meshes.push(line1Mesh);
-  if (line2Mesh) meshes.push(line2Mesh);
+
+  if (label.line2Svg) {
+    const line2Mesh = buildSvgMeshInBox(label.line2Svg, TEXT_BOTTOM_BOX);
+    if (line2Mesh) meshes.push(line2Mesh);
+  } else {
+    const bottomFontSize = chooseTextSizeForBox(label.line2, bottomSize.width, bottomSize.height);
+    const line2Mesh = createTextLineMesh(label.line2, bottomFontSize, bottomBox.x1, bottomBox.y1, bottomSize.width, bottomSize.height);
+    if (line2Mesh) meshes.push(line2Mesh);
+  }
+
   return meshes;
 }
 
@@ -207,7 +245,12 @@ export async function generateLabelStl(label: LabelInput): Promise<ArrayBuffer> 
 
   const root = new Group();
   root.add(cloneBaseMesh());
-  root.add(buildIconMesh(label.iconSvg));
+  if (label.iconText) {
+    for (const m of buildIconTextMeshes(label.iconText)) root.add(m);
+  } else {
+    const iconMesh = buildIconMesh(label.iconSvg);
+    if (iconMesh) root.add(iconMesh);
+  }
   for (const textMesh of buildTextMeshes(label)) {
     root.add(textMesh);
   }

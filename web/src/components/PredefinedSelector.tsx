@@ -49,9 +49,11 @@ interface PredefinedSelectorProps {
   labels: PredefinedLabel[];
   onGenerate: (selected: PredefinedLabel[]) => Promise<void>;
   onPreviewChange?: (label: PredefinedLabel) => void;
+  isActive?: boolean;
+  onActivate?: () => void;
 }
 
-export function PredefinedSelector({ labels, onGenerate, onPreviewChange }: PredefinedSelectorProps) {
+export function PredefinedSelector({ labels, onGenerate, onPreviewChange, isActive, onActivate }: PredefinedSelectorProps) {
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
@@ -184,7 +186,7 @@ export function PredefinedSelector({ labels, onGenerate, onPreviewChange }: Pred
   };
 
   return (
-    <section className="panel" onFocus={handleFocusEnter}>
+    <section className={`panel${isActive ? " panel-active" : ""}`} onFocus={handleFocusEnter} onPointerDown={() => onActivate?.()}>
       <h2><a href="https://geni.us/CNCStoreLabelGen" target="_blank" rel="noopener noreferrer" className="store-link">CNCKitchen.STORE Labels</a></h2>
       <p className="panel-subtitle">Pre-defined labels for CNC Kitchen Fasteners &amp; Inserts</p>
       <div className="tree">

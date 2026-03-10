@@ -30,6 +30,7 @@ export function App() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [previewLabel, setPreviewLabel] = useState<LabelInput | null>(null);
+  const [activePanel, setActivePanel] = useState<"custom" | "predefined">("custom");
 
   useEffect(() => {
     const run = async () => {
@@ -79,7 +80,7 @@ export function App() {
             these Gridfinity bins
           </a>
           . Print at <strong>0.2 mm layer height</strong> with a{" "}
-          <strong>color change after layer 2</strong> for best contrast.{" "}
+          <strong>color change in layer 3</strong> for best contrast.{" "}
           The <strong>Arachne wall generator</strong> is recommended for sharper detail.
         </p>
         <p>
@@ -102,8 +103,8 @@ export function App() {
       </section>
 
       <div className="layout">
-        <LabelForm onGenerate={handleCustom} onPreviewChange={setPreviewLabel} />
-        <PredefinedSelector labels={labels} onGenerate={handleBatch} onPreviewChange={setPreviewLabel} />
+        <LabelForm onGenerate={handleCustom} onPreviewChange={setPreviewLabel} isActive={activePanel === "custom"} onActivate={() => setActivePanel("custom")} />
+        <PredefinedSelector labels={labels} onGenerate={handleBatch} onPreviewChange={setPreviewLabel} isActive={activePanel === "predefined"} onActivate={() => setActivePanel("predefined")} />
       </div>
     </main>
   );

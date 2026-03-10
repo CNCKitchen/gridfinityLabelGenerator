@@ -52,9 +52,11 @@ const LINE2_IMAGES = [
 interface LabelFormProps {
   onGenerate: (input: LabelInput) => Promise<void>;
   onPreviewChange?: (label: LabelInput) => void;
+  isActive?: boolean;
+  onActivate?: () => void;
 }
 
-export function LabelForm({ onGenerate, onPreviewChange }: LabelFormProps) {
+export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }: LabelFormProps) {
   const [line1, setLine1] = useState("M3x10");
   const [line2, setLine2] = useState("Screw");
   const [line2Mode, setLine2Mode] = useState<"text" | "image">("text");
@@ -99,7 +101,7 @@ export function LabelForm({ onGenerate, onPreviewChange }: LabelFormProps) {
   };
 
   return (
-    <form className="panel" onSubmit={handleSubmit} onFocus={handleFocusEnter}>
+    <form className={`panel${isActive ? " panel-active" : ""}`} onSubmit={handleSubmit} onFocus={handleFocusEnter} onPointerDown={() => onActivate?.()}>
       <h2>Create Your Own Label</h2>
       <label>
         Line 1

@@ -35,7 +35,7 @@ Select from a curated catalogue of CNC Kitchen fasteners and inserts. Exporting 
 ## Printing tips
 
 - **Layer height**: 0.2 mm
-- **Colour change**: after layer 2 (so the embossed text prints in a contrasting colour)
+- **Colour change**: in layer 3 (so the embossed text prints in a contrasting colour)
 - **Wall generator**: Arachne recommended for sharper detail on thin strokes
 
 ## How it works

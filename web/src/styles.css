@@ -95,7 +95,8 @@ header {
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.panel:not(.preview-panel):focus-within {
+.panel:not(.preview-panel):focus-within,
+.panel:not(.preview-panel).panel-active {
   background: #1a2f4a;
   border-color: #3b6090;
 }

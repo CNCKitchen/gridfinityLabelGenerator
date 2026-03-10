@@ -112,13 +112,18 @@ export function LabelPreview({ label }: LabelPreviewProps) {
             viewBox={label.iconViewBox}
             preserveAspectRatio="xMidYMid meet"
           >
+            <defs>
+              <filter id="icon-to-white">
+                <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0" />
+              </filter>
+            </defs>
             <image
               href={`data:image/svg+xml;charset=utf-8,${encoded}`}
               x="0"
               y="0"
               width="793.70079"
               height="1122.5197"
-              style={{ filter: "brightness(0) invert(1)" }}
+              filter="url(#icon-to-white)"
             />
           </svg>
         );
@@ -131,7 +136,7 @@ export function LabelPreview({ label }: LabelPreviewProps) {
           width={ICON_BOX.w}
           height={ICON_BOX.h}
           preserveAspectRatio="xMidYMid meet"
-          style={{ filter: "brightness(0) invert(1)" }}
+          filter="url(#lp-to-white)"
         />
       );
     }
@@ -175,13 +180,18 @@ export function LabelPreview({ label }: LabelPreviewProps) {
           viewBox={vb}
           preserveAspectRatio="xMidYMid meet"
         >
+          <defs>
+            <filter id="line2-to-white">
+              <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0" />
+            </filter>
+          </defs>
           <image
             href={`data:image/svg+xml;charset=utf-8,${encoded}`}
             x="0"
             y="0"
             width="793.70079"
             height="1122.5197"
-            style={{ filter: "brightness(0) invert(1)" }}
+            filter="url(#line2-to-white)"
           />
         </svg>
       );
@@ -211,6 +221,12 @@ export function LabelPreview({ label }: LabelPreviewProps) {
       viewBox={VB}
       xmlns="http://www.w3.org/2000/svg"
     >
+      <defs>
+        {/* Safari-compatible white filter for SVG <image> elements */}
+        <filter id="lp-to-white">
+          <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0" />
+        </filter>
+      </defs>
       {renderLabelShape()}
       {renderIcon()}
       {renderLine1()}

@@ -50,6 +50,7 @@ export function LabelForm({ onGenerate, onPreviewChange }: LabelFormProps) {
   const [line2Mode, setLine2Mode] = useState<"text" | "image">("text");
   const [selectedLine2Image, setSelectedLine2Image] = useState<string | null>(null);
   const [selectedClipart, setSelectedClipart] = useState<string | null>("tx");
+  const [labelWidth, setLabelWidth] = useState<1 | 2 | 3>(1);
   const [loading, setLoading] = useState(false);
 
   function buildLabel(): LabelInput {
@@ -57,17 +58,17 @@ export function LabelForm({ onGenerate, onPreviewChange }: LabelFormProps) {
     if (line2Mode === "image" && selectedLine2Image) {
       const img = LINE2_IMAGES.find((i) => i.id === selectedLine2Image)!;
       const title = [line1].filter(Boolean).join(" ");
-      return { title, line1, line2: "", iconSvg, line2Svg: img.svg, line2ViewBox: img.viewBox };
+      return { title, line1, line2: "", iconSvg, line2Svg: img.svg, line2ViewBox: img.viewBox, labelWidth };
     }
     const title = [line1, line2].filter(Boolean).join(" ");
-    return { title, line1, line2, iconSvg };
+    return { title, line1, line2, iconSvg, labelWidth };
   }
 
   // Emit preview on every change, and once on mount
   useEffect(() => {
     if (!onPreviewChange) return;
     onPreviewChange(buildLabel());
-  }, [line1, line2, line2Mode, selectedLine2Image, selectedClipart, onPreviewChange]);
+  }, [line1, line2, line2Mode, selectedLine2Image, selectedClipart, labelWidth, onPreviewChange]);
 
   const handleFocusEnter = (e: React.FocusEvent<HTMLFormElement>) => {
     if (onPreviewChange && !e.currentTarget.contains(e.relatedTarget as Node)) {
@@ -163,6 +164,22 @@ export function LabelForm({ onGenerate, onPreviewChange }: LabelFormProps) {
                 alt={c.label}
               />
               <span>{c.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="width-selector">
+        <span>Label Width</span>
+        <div className="mode-toggle">
+          {([1, 2, 3] as const).map((w) => (
+            <button
+              key={w}
+              type="button"
+              className={labelWidth === w ? "active" : ""}
+              onClick={() => setLabelWidth(w)}
+              title={`${w}×  (${(37.8 + (w - 1) * 42).toFixed(1)} mm)`}
+            >
+              {w}×
             </button>
           ))}
         </div>

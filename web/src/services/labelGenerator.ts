@@ -35,6 +35,9 @@ let CONTENT_ORIGIN_X: number;
 let CONTENT_ORIGIN_Y: number;
 let font: Font;
 
+// Per-call offset: shifts content right to centre it on wider labels
+let contentXOffset = 0;
+
 function ensureInitialized(): Promise<void> {
   if (_init) return _init;
   const base = import.meta.env.BASE_URL;
@@ -92,11 +95,31 @@ function getBoxSize(box: Rect): { width: number; height: number } {
 
 function toWorldBox(box: Rect): Rect {
   return {
-    x1: CONTENT_ORIGIN_X + box.x1,
+    x1: CONTENT_ORIGIN_X + contentXOffset + box.x1,
     y1: CONTENT_ORIGIN_Y + box.y1,
-    x2: CONTENT_ORIGIN_X + box.x2,
+    x2: CONTENT_ORIGIN_X + contentXOffset + box.x2,
     y2: CONTENT_ORIGIN_Y + box.y2,
   };
+}
+
+/**
+ * Widens a cloned base geometry by shifting all vertices whose X coordinate
+ * is right of the geometric midpoint. This extends the flat centre area while
+ * keeping both snap-edge profiles intact.
+ */
+function widenGeometry(geometry: BufferGeometry, extraWidth: number): void {
+  geometry.computeBoundingBox();
+  const bounds = geometry.boundingBox!;
+  const threshold = (bounds.min.x + bounds.max.x) / 2;
+  const pos = geometry.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    if (pos.getX(i) > threshold) {
+      pos.setX(i, pos.getX(i) + extraWidth);
+    }
+  }
+  pos.needsUpdate = true;
+  geometry.computeBoundingBox();
+  geometry.computeVertexNormals();
 }
 
 function buildSvgMeshInBox(svgString: string, box: Rect): Mesh | null {
@@ -249,8 +272,16 @@ export async function generateLabelStl(label: LabelInput): Promise<ArrayBuffer> 
     throw new Error("At least one text line is required.");
   }
 
+  const width = label.labelWidth ?? 1;
+  const extraWidth = (width - 1) * 42;
+  // Centre the marking on the expanded label
+  contentXOffset = extraWidth / 2;
+
+  const baseMesh = cloneBaseMesh();
+  if (extraWidth > 0) widenGeometry(baseMesh.geometry, extraWidth);
+
   const root = new Group();
-  root.add(cloneBaseMesh());
+  root.add(baseMesh);
   if (label.iconText) {
     for (const m of buildIconTextMeshes(label.iconText)) root.add(m);
   } else {

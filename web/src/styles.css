@@ -279,6 +279,15 @@ button:disabled {
   color: #86efac;
 }
 
+/* Label width selector */
+
+.width-selector {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
 /* Symbol picker */
 
 .symbol-section {

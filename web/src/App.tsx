@@ -88,9 +88,9 @@ export function App() {
         <p className="info-beta">
           ⚠️ This is a <strong>beta</strong> — found a bug or want a new feature?{" "}
           Open an issue on{" "}
-          <a href="https://github.com/Stefanheijl/gridfinityLabelGenerator/issues" target="_blank" rel="noopener noreferrer">GitHub</a>{" "}
+          <a href="https://github.com/CNCKitchen/gridfinityLabelGenerator/issues" target="_blank" rel="noopener noreferrer">GitHub</a>{" "}
           or comment on{" "}
-          <a href="https://www.printables.com/model/592545-gridfinity-bin-with-printable-label-by-pred-parame" target="_blank" rel="noopener noreferrer">Printables</a>.
+          <a href="https://www.printables.com/@CNCKitchen/models" target="_blank" rel="noopener noreferrer">Printables</a>.
         </p>
       </div>
 

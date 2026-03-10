@@ -4,6 +4,7 @@ export interface LabelInput {
   line1: string;
   line2: string;
   iconSvg: string;
+  iconViewBox?: string;  // viewBox crop for iconSvg (A4-canvas SVGs need cropping)
   iconText?: string;
   line2Svg?: string;    // SVG to render in the line-2 box instead of text
   line2ViewBox?: string; // viewBox crop for line2Svg (A4-canvas SVGs need cropping)

@@ -4,22 +4,18 @@
    width="793.70081"
    height="1122.5197"
    version="1.1"
-   id="svg36"
+   id="svg8"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg">
   <desc
-     id="desc1">symbols.dxf - scale = 1.000000, origin = (0.000000, 0.000000), method = manual</desc>
+     id="desc1">screws.dxf - scale = 1.000000, origin = (0.000000, 0.000000), method = manual</desc>
   <defs
      id="defs4" />
   <g
-     id="g36">
+     id="g8">
     <path
-       d="m 103.58899,234.27059 a 52.913386,52.913386 0 0 0 0,-104.9941 z"
+       d="M 123.63739,282.5935 V 269.20618 H 88.377445 v 13.38732 z"
        style="fill:#000000;fill-opacity:1;stroke:#000000"
        id="path5" />
-    <path
-       d="m 90.339669,129.27649 a 52.913386,52.913386 0 0 0 0,104.9941 z"
-       style="fill:#000000;fill-opacity:1;stroke:#000000"
-       id="path6" />
   </g>
 </svg>

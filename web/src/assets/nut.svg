@@ -1,57 +1,21 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Created with Inkscape (http://www.inkscape.org/) -->
-
 <svg
+   viewBox="0 0 793.70079 1122.5197"
+   width="793.70081"
+   height="1122.5197"
    version="1.1"
-   id="svg1"
-   width="266.66666"
-   height="266.66666"
-   viewBox="0 0 266.66666 266.66666"
-   sodipodi:docname="Design File.ai"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   id="svg36"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg">
+  <desc
+     id="desc1">symbols.dxf - scale = 1.000000, origin = (0.000000, 0.000000), method = manual</desc>
   <defs
-     id="defs1">
-    <clipPath
-       clipPathUnits="userSpaceOnUse"
-       id="clipPath4">
-      <path
-         d="M 0,200 H 200 V 0 H 0 Z"
-         transform="translate(-2.9500001,-100.06361)"
-         id="path4" />
-    </clipPath>
-  </defs>
-  <sodipodi:namedview
-     id="namedview1"
-     pagecolor="#ffffff"
-     bordercolor="#000000"
-     borderopacity="0.25"
-     inkscape:showpageshadow="2"
-     inkscape:pageopacity="0.0"
-     inkscape:pagecheckerboard="0"
-     inkscape:deskcolor="#d1d1d1">
-    <inkscape:page
-       x="0"
-       y="0"
-       inkscape:label="2"
-       id="page2"
-       width="266.66666"
-       height="266.66666"
-       margin="21.418133 3.9333334 21.247999 3.9333467"
-       bleed="0" />
-  </sodipodi:namedview>
+     id="defs4" />
   <g
-     id="layer-MC0"
-     inkscape:groupmode="layer"
-     inkscape:label="Layer 1"
-     transform="translate(-286.66665)">
+     id="g36">
     <path
-       id="path3"
-       d="M 0,0 24.3,42 48.5,84 H 97 145.5 L 169.8,42 194.1,0 169.8,-42 145.5,-84 H 97 48.5 l -24.2,42 z m 50.1,0 c 0,25.9 21,46.9 46.9,46.9 25.9,0 46.9,-21 46.9,-46.9 0,-25.9 -21,-46.9 -46.9,-46.9 -25.9,0 -46.9,21 -46.9,46.9"
-       style="fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:none"
-       transform="matrix(1.3333333,0,0,-1.3333333,290.6,133.24853)"
-       clip-path="url(#clipPath4)" />
+       d="m 343.10156,552.70117 -32.73242,56.69336 32.73242,56.69141 h 65.46289 l 32.73242,-56.69141 -32.73242,-56.69336 z m 31.03125,31.83789 a 24.913595,24.913595 0 0 1 26.61328,24.85547 24.913595,24.913595 0 0 1 -49.82617,0 24.913595,24.913595 0 0 1 23.21289,-24.85547 z"
+       style="fill:#000000;fill-opacity:1;stroke:#000000"
+       id="path42" />
   </g>
 </svg>

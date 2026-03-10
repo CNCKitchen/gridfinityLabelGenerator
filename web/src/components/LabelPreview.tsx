@@ -102,6 +102,27 @@ export function LabelPreview({ label }: LabelPreviewProps) {
 
     if (label.iconSvg) {
       const encoded = encodeURIComponent(label.iconSvg);
+      if (label.iconViewBox) {
+        return (
+          <svg
+            x={ICON_BOX.x}
+            y={ICON_BOX.y}
+            width={ICON_BOX.w}
+            height={ICON_BOX.h}
+            viewBox={label.iconViewBox}
+            preserveAspectRatio="xMidYMid meet"
+          >
+            <image
+              href={`data:image/svg+xml;charset=utf-8,${encoded}`}
+              x="0"
+              y="0"
+              width="793.70079"
+              height="1122.5197"
+              style={{ filter: "brightness(0) invert(1)" }}
+            />
+          </svg>
+        );
+      }
       return (
         <image
           href={`data:image/svg+xml;charset=utf-8,${encoded}`}

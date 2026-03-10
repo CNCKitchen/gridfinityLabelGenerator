@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LabelCategory, PredefinedLabel } from "../types/label";
-import txSvg from "../assets/tx.svg?raw";
+import txSvg from "../assets/torx.svg?raw";
 import trpLowHeadSvg from "../assets/TRP_lowHeadScrew.svg?raw";
 
 // Fixed M3x10 Screw used as the live preview fixture for the predefined panel
@@ -10,6 +10,7 @@ const M3_PREVIEW_BASE: PredefinedLabel = {
   line1: "M3x10",
   line2: "Screw",
   iconSvg: txSvg,
+  iconViewBox: "541 127 112 112",
   line2Svg: trpLowHeadSvg,
   line2ViewBox: "28 1042 93 32",
   category: "fasteners",

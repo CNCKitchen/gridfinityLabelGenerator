@@ -72,6 +72,28 @@ export function App() {
         <h1>Gridfinity Label Generator</h1>
       </header>
 
+      <div className="info-box">
+        <p>
+          Labels are designed for{" "}
+          <a href="https://www.printables.com/model/592545-gridfinity-bin-with-printable-label-by-pred-parame" target="_blank" rel="noopener noreferrer">
+            these Gridfinity bins
+          </a>
+          . Print at <strong>0.2 mm layer height</strong> with a{" "}
+          <strong>color change after layer 2</strong> for best contrast.{" "}
+          The <strong>Arachne wall generator</strong> is recommended for sharper detail.
+        </p>
+        <p>
+          Includes pre-defined labels for all <strong>CNC Kitchen fasteners &amp; inserts</strong>.
+        </p>
+        <p className="info-beta">
+          ⚠️ This is a <strong>beta</strong> — found a bug or want a new feature?{" "}
+          Open an issue on{" "}
+          <a href="https://github.com/Stefanheijl/gridfinityLabelGenerator/issues" target="_blank" rel="noopener noreferrer">GitHub</a>{" "}
+          or comment on{" "}
+          <a href="https://www.printables.com/model/592545-gridfinity-bin-with-printable-label-by-pred-parame" target="_blank" rel="noopener noreferrer">Printables</a>.
+        </p>
+      </div>
+
       {loading ? <p>Loading predefined labels...</p> : null}
       {error ? <p className="error">{error}</p> : null}
 

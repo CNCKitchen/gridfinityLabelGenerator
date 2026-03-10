@@ -1,6 +1,6 @@
 import { zipSync } from "fflate";
-import txSvg from "../assets/tx.svg?raw";
-import washerSvg from "../assets/washer_sml.svg?raw";
+import txSvg from "../assets/torx.svg?raw";
+import washerSvg from "../assets/washer.svg?raw";
 import screwLowHeadSvg from "../assets/screw_lowHead.svg?raw";
 import trpLowHeadSvg from "../assets/TRP_lowHeadScrew.svg?raw";
 import insertSvg from "../assets/insert.svg?raw";
@@ -16,6 +16,14 @@ const ICON_SVGS: Record<IconKey, string> = {
   insert: insertSvg,
   nut: nutSvg,
   nylock: nylockSvg,
+};
+
+const ICON_VIEWBOXES: Partial<Record<IconKey, string>> = {
+  tx:      "541 127 112 112",
+  washer:  "38 280 112 112",
+  insert:  "537 346 75 98",
+  nut:     "307 549 137 120",
+  nylock:  "477 549 137 120",
 };
 
 // Maps line2 text values to a TRP screw-profile SVG for the "Use image for line 2" option.
@@ -172,6 +180,7 @@ export async function fetchPredefined(): Promise<PredefinedLabel[]> {
   return PREDEFINED_DATA.map((p) => ({
     ...p,
     iconSvg: ICON_SVGS[p.icon],
+    iconViewBox: ICON_VIEWBOXES[p.icon],
     line2Svg: LINE2_SVG_MAP[p.line2],
     line2ViewBox: LINE2_VIEWBOX_MAP[p.line2],
   }));

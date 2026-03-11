@@ -70,14 +70,14 @@ export function App() {
         <img src={`${import.meta.env.BASE_URL}header.jpg`} alt="CNC Kitchen" className="header-banner" />
       </a>
       <header>
-        <h1>Gridfinity Label Generator</h1>
+        <h1>Gridfinity Label Generator (Beta)</h1>
       </header>
 
       <div className="info-box">
         <p>
           Labels are designed for{" "}
           <a href="https://www.printables.com/model/592545-gridfinity-bin-with-printable-label-by-pred-parame" target="_blank" rel="noopener noreferrer">
-            these Gridfinity bins
+            the Gridfinity Bin with Printable Label by Pred
           </a>
           . Print at <strong>0.2 mm layer height</strong> with a{" "}
           <strong>color change in layer 3</strong> for best contrast.{" "}

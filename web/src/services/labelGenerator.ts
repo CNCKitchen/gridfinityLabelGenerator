@@ -21,11 +21,11 @@ const EMBOSS_HEIGHT = 0.4;
 // factor. Glyphs themselves are unchanged (no squishing), only the gaps between
 // them shrink. The smaller total width lets chooseTextSizeForBox pick a larger
 // font size, making strokes proportionally thicker — important for sliceability.
-const TRACKING = 0.9;
+const TRACKING = 0.95;
 
 const SVG_BOX = { x1: 1.5, y1: 0.5, x2: 11, y2: 10 };
-const TEXT_TOP_BOX = { x1: 12, y1: 5.75, x2: 33.3, y2: 10 };
-const TEXT_BOTTOM_BOX = { x1: 12, y1: 0.5, x2: 33.3, y2: 4.75 };
+const TEXT_TOP_BOX = { x1: 11, y1: 5.75, x2: 34.5, y2: 10 };
+const TEXT_BOTTOM_BOX = { x1: 11, y1: 0.5, x2: 34.5, y2: 4.75 };
 
 type Rect = { x1: number; y1: number; x2: number; y2: number };
 

@@ -21,14 +21,14 @@ const SVG_BOX = {
 const TEXT_TOP_BOX = {
   x1: 12,
   y1: 5.75,
-  x2: 33.3,
+  x2: 37.5,
   y2: 10
 };
 
 const TEXT_BOTTOM_BOX = {
   x1: 12,
   y1: 0.5,
-  x2: 33.3,
+  x2: 37.5,
   y2: 4.75
 };
 

@@ -176,6 +176,18 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
       <div className="symbol-section">
         <span>Symbol</span>
         <div className="symbol-picker">
+          <button
+            type="button"
+            className={`symbol-item${selectedClipart === null ? " selected" : ""}`}
+            onClick={() => setSelectedClipart(null)}
+            title="No symbol — text uses the full label width"
+          >
+            <svg viewBox="0 0 40 40" width="40" height="40">
+              <circle cx="20" cy="20" r="13" fill="none" stroke="#94a3b8" strokeWidth="3" />
+              <line x1="10.8" y1="29.2" x2="29.2" y2="10.8" stroke="#94a3b8" strokeWidth="3" />
+            </svg>
+            <span>None</span>
+          </button>
           {CLIPARTS.map((c) => (
             <button
               key={c.id}

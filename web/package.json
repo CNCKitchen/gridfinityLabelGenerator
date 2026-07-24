@@ -2,6 +2,7 @@
   "name": "gridfinity-label-generator-web",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "predev": "node scripts/write-build-info.mjs",

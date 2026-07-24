@@ -74,3 +74,9 @@ npm run build
 ```
 
 Output goes to `web/dist/`. The `base: "./"` setting in `vite.config.ts` ensures assets use relative paths, so the build works on GitHub Pages and any subdirectory host.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
+The base label geometry (`GridfinityBinLabel.stl`) is derived from [pred's parametric Gridfinity bin](https://www.printables.com/model/592545-gridfinity-bin-with-printable-label-by-pred-parame) on Printables, which carries its own license terms.

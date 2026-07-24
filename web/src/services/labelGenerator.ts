@@ -28,7 +28,9 @@ const TEXT_TOP_BOX = { x1: 11, y1: 5.75, x2: 34.5, y2: 10 };
 const TEXT_BOTTOM_BOX = { x1: 11, y1: 0.5, x2: 34.5, y2: 4.75 };
 const TEXT_TOP_BOX_NO_ICON = { x1: 1.5, y1: 5.75, x2: 34.5, y2: 10 };
 const TEXT_BOTTOM_BOX_NO_ICON = { x1: 1.5, y1: 0.5, x2: 34.5, y2: 4.75 };
-
+// When only one text line is used it may span the label's full height
+const TEXT_SINGLE_BOX = { x1: 11, y1: 0.5, x2: 34.5, y2: 10 };
+const TEXT_SINGLE_BOX_NO_ICON = { x1: 1.5, y1: 0.5, x2: 34.5, y2: 10 };
 
 type Rect = { x1: number; y1: number; x2: number; y2: number };
 
@@ -247,7 +249,10 @@ function buildIconTextMeshes(text: string): Mesh[] {
 }
 
 function chooseTextSizeForBox(text: string, maxWidth: number, maxHeight: number): number {
-  let size = 6;
+  // Start high enough that text can fill tall boxes (cap height is ~0.7× the
+  // font size); the loop shrinks until the text fits. 6 keeps the classic
+  // two-line size for the standard 4.25mm half-height boxes.
+  let size = Math.max(6, maxHeight * 1.4);
   const minSize = 1.2;
   while (size > minSize) {
     const bounds = getTextBounds(text, size);
@@ -300,9 +305,19 @@ function createTextLineMesh(
 
 function buildTextMeshes(label: LabelInput): Mesh[] {
   const hasIcon = !!label.iconText || !!label.iconSvg;
+  const hasLine1 = !!label.line1.trim();
+  const hasLine2 = !!label.line2Svg || !!label.line2.trim();
 
-  const topBox = toWorldBox(hasIcon ? TEXT_TOP_BOX : TEXT_TOP_BOX_NO_ICON);
-  const bottomBox = toWorldBox(hasIcon ? TEXT_BOTTOM_BOX : TEXT_BOTTOM_BOX_NO_ICON);
+  // The only present line gets the label's full height
+  const topRect = !hasLine2
+    ? (hasIcon ? TEXT_SINGLE_BOX : TEXT_SINGLE_BOX_NO_ICON)
+    : (hasIcon ? TEXT_TOP_BOX : TEXT_TOP_BOX_NO_ICON);
+  const bottomRect = !hasLine1
+    ? (hasIcon ? TEXT_SINGLE_BOX : TEXT_SINGLE_BOX_NO_ICON)
+    : (hasIcon ? TEXT_BOTTOM_BOX : TEXT_BOTTOM_BOX_NO_ICON);
+
+  const topBox = toWorldBox(topRect);
+  const bottomBox = toWorldBox(bottomRect);
   const topSize = getBoxSize(topBox);
   const bottomSize = getBoxSize(bottomBox);
 
@@ -313,10 +328,7 @@ function buildTextMeshes(label: LabelInput): Mesh[] {
   if (line1Mesh) meshes.push(line1Mesh);
 
   if (label.line2Svg) {
-    const line2Mesh = buildSvgMeshInBox(
-      label.line2Svg,
-      hasIcon ? TEXT_BOTTOM_BOX : TEXT_BOTTOM_BOX_NO_ICON
-    );
+    const line2Mesh = buildSvgMeshInBox(label.line2Svg, bottomRect);
     if (line2Mesh) meshes.push(line2Mesh);
   } else {
     const bottomFontSize = chooseTextSizeForBox(label.line2, bottomSize.width, bottomSize.height);

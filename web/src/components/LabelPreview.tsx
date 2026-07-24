@@ -21,6 +21,9 @@ const LINE1_BOX = { x: 13.5, y: 1.0,  w: 21.3, h: 4.25 }; // top half
 const LINE2_BOX = { x: 13.5, y: 6.25, w: 21.3, h: 4.25 }; // bottom half
 const FULL_LINE1_BOX = { x: 3.0, y: 1.0, w: 31.8, h: 4.25 };
 const FULL_LINE2_BOX = { x: 3.0, y: 6.25, w: 31.8, h: 4.25 };
+// When only one text line is used it may span the label's full height
+const SINGLE_LINE_BOX      = { x: 13.5, y: 1.0, w: 21.3, h: 9.5 };
+const FULL_SINGLE_LINE_BOX = { x: 3.0,  y: 1.0, w: 31.8, h: 9.5 };
 
 // Outer viewBox adds 1mm margin on all sides so the label outline stroke isn't clipped
 const VB_MARGIN = 1;
@@ -148,8 +151,13 @@ export function LabelPreview({ label }: LabelPreviewProps) {
 
   function renderLine1() {
     if (!label?.line1) return null;
-    const box =
-      label.iconSvg || label.iconText
+    const hasIcon = !!(label.iconSvg || label.iconText);
+    const isOnlyLine = !label.line2 && !label.line2Svg;
+    const box = isOnlyLine
+      ? hasIcon
+        ? SINGLE_LINE_BOX
+        : FULL_SINGLE_LINE_BOX
+      : hasIcon
         ? LINE1_BOX
         : FULL_LINE1_BOX;
 
@@ -173,18 +181,27 @@ export function LabelPreview({ label }: LabelPreviewProps) {
 
   function renderLine2() {
     if (!label) return null;
+    const hasIcon = !!(label.iconSvg || label.iconText);
+    const isOnlyLine = !label.line1;
 
     if (label.line2Svg) {
+      const svgBox = isOnlyLine
+        ? hasIcon
+          ? SINGLE_LINE_BOX
+          : FULL_SINGLE_LINE_BOX
+        : hasIcon
+          ? LINE2_BOX
+          : FULL_LINE2_BOX;
       // Use a nested <svg> with a viewBox cropped to the actual content area.
       // label.line2ViewBox overrides the default SCREW_SVG_VIEWBOX for TRP images.
       const vb = label.line2ViewBox ?? SCREW_SVG_VIEWBOX;
       const encoded = encodeURIComponent(label.line2Svg);
       return (
         <svg
-          x={LINE2_BOX.x}
-          y={LINE2_BOX.y}
-          width={LINE2_BOX.w}
-          height={LINE2_BOX.h}
+          x={svgBox.x}
+          y={svgBox.y}
+          width={svgBox.w}
+          height={svgBox.h}
           viewBox={vb}
           preserveAspectRatio="xMidYMid meet"
         >
@@ -206,8 +223,11 @@ export function LabelPreview({ label }: LabelPreviewProps) {
     }
 
     if (!label.line2) return null;
-    const box =
-      label.iconSvg || label.iconText
+    const box = isOnlyLine
+      ? hasIcon
+        ? SINGLE_LINE_BOX
+        : FULL_SINGLE_LINE_BOX
+      : hasIcon
         ? LINE2_BOX
         : FULL_LINE2_BOX;
 

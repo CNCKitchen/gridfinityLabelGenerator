@@ -34,7 +34,7 @@ const CLIPARTS = [
   { id: "nut",          label: "Nut",         svg: nutSvg,         viewBox: "307 549 137 120" },
   { id: "square_nut",   label: "Square nut",  svg: squareNutSvg,   viewBox: "-11 -11 130 130" },
   { id: "nylock",       label: "Nylock",      svg: nylockSvg,      viewBox: "477 549 137 120" },
-  { id: "wingnut",      label: "Wingnut",     svg: wingnutSvg,     viewBox: "52 38 96 78" },
+  { id: "wingnut",      label: "Wingnut",     svg: wingnutSvg,     viewBox: "16 16 168 102" },
   { id: "phillips",     label: "Phillips",    svg: phillipsSvg,    viewBox: "81 51 112 112" },
   { id: "robertson",    label: "Robertson",   svg: robertsonSvg,   viewBox: "47 47 120 120" },
   { id: "slot",         label: "Slot",        svg: slotSvg,        viewBox: "35 125 125 113" },

@@ -8,19 +8,17 @@
    xmlns="http://www.w3.org/2000/svg">
   <g id="g1">
     <path
-       d="M 76,88 a 24,24 0 1 1 48,0 a 24,24 0 1 1 -48,0 z M 90,88 a 10,10 0 1 0 20,0 a 10,10 0 1 0 -20,0 z"
-       style="fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:none"
-       id="boss" />
-    <path
-       d="M 76,99 h 48 v 13 h -48 z"
+       d="M 84,74 H 116 Q 122,74 124.9,80.4 L 137.1,107.6 Q 140,114 132,114 H 68 Q 60,114 62.9,107.6 L 75.1,80.4 Q 78,74 84,74 Z"
        style="fill:#000000;fill-opacity:1;stroke:none"
-       id="base" />
-    <path
-       d="M 84,99 Q 54,86 60,48 Q 61,42 67,44 Q 80,52 88,66 L 84,99 Z"
+       id="body" />
+    <rect
+       x="36" y="23" width="38" height="64" rx="10" ry="10"
+       transform="rotate(-40 55 55)"
        style="fill:#000000;fill-opacity:1;stroke:none"
        id="wing-left" />
-    <path
-       d="M 116,99 Q 146,86 140,48 Q 139,42 133,44 Q 120,52 112,66 L 116,99 Z"
+    <rect
+       x="126" y="23" width="38" height="64" rx="10" ry="10"
+       transform="rotate(40 145 55)"
        style="fill:#000000;fill-opacity:1;stroke:none"
        id="wing-right" />
   </g>

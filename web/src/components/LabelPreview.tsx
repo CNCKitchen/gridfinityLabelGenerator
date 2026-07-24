@@ -19,6 +19,8 @@ const LABEL_H = 11.5;
 const ICON_BOX  = { x: 3.0,  y: 1.0,  w: 9.5,  h: 9.5  };
 const LINE1_BOX = { x: 13.5, y: 1.0,  w: 21.3, h: 4.25 }; // top half
 const LINE2_BOX = { x: 13.5, y: 6.25, w: 21.3, h: 4.25 }; // bottom half
+const FULL_LINE1_BOX = { x: 3.0, y: 1.0, w: 31.8, h: 4.25 };
+const FULL_LINE2_BOX = { x: 3.0, y: 6.25, w: 31.8, h: 4.25 };
 
 // Outer viewBox adds 1mm margin on all sides so the label outline stroke isn't clipped
 const VB_MARGIN = 1;
@@ -146,11 +148,17 @@ export function LabelPreview({ label }: LabelPreviewProps) {
 
   function renderLine1() {
     if (!label?.line1) return null;
-    const fs = fittingFontSize(label.line1, LINE1_BOX.w, LINE1_BOX.h);
+    const box =
+      label.iconSvg || label.iconText
+        ? LINE1_BOX
+        : FULL_LINE1_BOX;
+
+    const fs = fittingFontSize(label.line1, box.w, box.h);
+
     return (
       <text
-        x={LINE1_BOX.x + LINE1_BOX.w / 2}
-        y={LINE1_BOX.y + LINE1_BOX.h / 2}
+        x={box.x + box.w / 2}
+        y={box.y + box.h / 2}
         textAnchor="middle"
         dominantBaseline="central"
         fontSize={fs}
@@ -198,11 +206,17 @@ export function LabelPreview({ label }: LabelPreviewProps) {
     }
 
     if (!label.line2) return null;
-    const fs = fittingFontSize(label.line2, LINE2_BOX.w, LINE2_BOX.h);
+    const box =
+      label.iconSvg || label.iconText
+        ? LINE2_BOX
+        : FULL_LINE2_BOX;
+
+    const fs = fittingFontSize(label.line2, box.w, box.h);
+
     return (
       <text
-        x={LINE2_BOX.x + LINE2_BOX.w / 2}
-        y={LINE2_BOX.y + LINE2_BOX.h / 2}
+        x={box.x + box.w / 2}
+        y={box.y + box.h / 2}
         textAnchor="middle"
         dominantBaseline="central"
         fontSize={fs}

@@ -26,6 +26,9 @@ const TRACKING = 0.95;
 const SVG_BOX = { x1: 1.5, y1: 0.5, x2: 11, y2: 10 };
 const TEXT_TOP_BOX = { x1: 11, y1: 5.75, x2: 34.5, y2: 10 };
 const TEXT_BOTTOM_BOX = { x1: 11, y1: 0.5, x2: 34.5, y2: 4.75 };
+const TEXT_TOP_BOX_NO_ICON = { x1: 1.5, y1: 5.75, x2: 34.5, y2: 10 };
+const TEXT_BOTTOM_BOX_NO_ICON = { x1: 1.5, y1: 0.5, x2: 34.5, y2: 4.75 };
+
 
 type Rect = { x1: number; y1: number; x2: number; y2: number };
 
@@ -296,8 +299,10 @@ function createTextLineMesh(
 }
 
 function buildTextMeshes(label: LabelInput): Mesh[] {
-  const topBox = toWorldBox(TEXT_TOP_BOX);
-  const bottomBox = toWorldBox(TEXT_BOTTOM_BOX);
+  const hasIcon = !!label.iconText || !!label.iconSvg;
+
+  const topBox = toWorldBox(hasIcon ? TEXT_TOP_BOX : TEXT_TOP_BOX_NO_ICON);
+  const bottomBox = toWorldBox(hasIcon ? TEXT_BOTTOM_BOX : TEXT_BOTTOM_BOX_NO_ICON);
   const topSize = getBoxSize(topBox);
   const bottomSize = getBoxSize(bottomBox);
 
@@ -308,7 +313,10 @@ function buildTextMeshes(label: LabelInput): Mesh[] {
   if (line1Mesh) meshes.push(line1Mesh);
 
   if (label.line2Svg) {
-    const line2Mesh = buildSvgMeshInBox(label.line2Svg, TEXT_BOTTOM_BOX);
+    const line2Mesh = buildSvgMeshInBox(
+      label.line2Svg,
+      hasIcon ? TEXT_BOTTOM_BOX : TEXT_BOTTOM_BOX_NO_ICON
+    );
     if (line2Mesh) meshes.push(line2Mesh);
   } else {
     const bottomFontSize = chooseTextSizeForBox(label.line2, bottomSize.width, bottomSize.height);
@@ -321,6 +329,7 @@ function buildTextMeshes(label: LabelInput): Mesh[] {
 
 export async function generateLabelStl(label: LabelInput): Promise<ArrayBuffer> {
   await ensureInitialized();
+
 
   if (!label.line1.trim() && !label.line2.trim()) {
     throw new Error("At least one text line is required.");
@@ -338,7 +347,8 @@ export async function generateLabelStl(label: LabelInput): Promise<ArrayBuffer> 
   root.add(baseMesh);
   if (label.iconText) {
     for (const m of buildIconTextMeshes(label.iconText)) root.add(m);
-  } else {
+  }  
+  else {
     const iconMesh = buildIconMesh(label.iconSvg);
     if (iconMesh) root.add(iconMesh);
   }

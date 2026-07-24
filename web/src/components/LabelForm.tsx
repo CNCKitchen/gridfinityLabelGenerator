@@ -4,12 +4,16 @@ import hexSvg from "../assets/hex.svg?raw";
 import insertSvg from "../assets/insert.svg?raw";
 import lockwasherSvg from "../assets/lockwasher.svg?raw";
 import nutSvg from "../assets/nut.svg?raw";
+import squareNutSvg from "../assets/square_nut.svg?raw";
 import nylockSvg from "../assets/nylock.svg?raw";
 import phillipsSvg from "../assets/phillips.svg?raw";
 import slotSvg from "../assets/slot.svg?raw";
 import torxSvg from "../assets/torx.svg?raw";
 import washerSvg from "../assets/washer.svg?raw";
 import washerLargeSvg from "../assets/washer_large.svg?raw";
+import tNutSvg from "../assets/tnut.svg?raw";
+import rollInTNutSvg from "../assets/roll-in-tnut.svg?raw";
+
 import trpButtonHeadSvg from "../assets/TRP_ButtonHead.svg?raw";
 import trpCountersunkSvg from "../assets/TRP_countersunkHead.svg?raw";
 import trpCskSelfTapSvg from "../assets/TRP_countersunk_selfTapping.svg?raw";
@@ -26,12 +30,15 @@ const CLIPARTS = [
   { id: "insert",       label: "Insert",      svg: insertSvg,      viewBox: "537 346 75 98"  },
   { id: "lockwasher",   label: "Lock Washer", svg: lockwasherSvg,  viewBox: "38 564 111 111" },
   { id: "nut",          label: "Nut",         svg: nutSvg,         viewBox: "307 549 137 120" },
+  { id: "square_nut",   label: "Square nut",  svg: squareNutSvg,   viewBox: "-11 -11 130 130" },
   { id: "nylock",       label: "Nylock",      svg: nylockSvg,      viewBox: "477 549 137 120" },
   { id: "phillips",     label: "Phillips",    svg: phillipsSvg,    viewBox: "81 51 112 112" },
   { id: "slot",         label: "Slot",        svg: slotSvg,        viewBox: "35 125 125 113" },
   { id: "torx",         label: "Torx",        svg: torxSvg,        viewBox: "541 127 112 112" },
   { id: "washer",       label: "Washer",      svg: washerSvg,      viewBox: "38 280 112 112" },
   { id: "washer_large", label: "Washer L",    svg: washerLargeSvg, viewBox: "48 421 112 112" },
+  { id: "t_nut",        label: "T-Nut",       svg: tNutSvg,        viewBox: "15 -35 80 120" },
+  { id: "roll-in_t_nut",label: "Roll Nut",    svg: rollInTNutSvg,  viewBox: "-10 -10 100 170" },
 ];
 
 // TRP screw-profile images for the line-2 box.

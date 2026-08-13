@@ -91,14 +91,6 @@ function cloneBaseMesh(): Mesh<BufferGeometry> {
 // Replicates Three.js FontLoader's internal createPaths logic so we can apply
 // a custom tracking multiplier to each glyph's horizontal advance (ha).
 
-// The bundled helvetiker typeface has no '×' (U+00D7) glyph. Rather than build a
-// synthetic one (which can't be kerned and so sits at slightly the wrong height /
-// offset next to prepared glyphs), route it to the font's own lowercase 'x' glyph:
-// a clean, pre-kerned cross that is vertically centred exactly like digits.
-const GLYPH_SUBSTITUTIONS: Record<string, string> = {
-  "\u00d7": "x",
-};
-
 function generateShapesWithTracking(text: string, size: number): Shape[] {
   const data = (font as any).data as {
     resolution: number;
@@ -109,8 +101,7 @@ function generateShapesWithTracking(text: string, size: number): Shape[] {
   let offsetX = 0;
 
   for (const char of text) {
-    const glyphChar = GLYPH_SUBSTITUTIONS[char] ?? char;
-    const glyph = data.glyphs[glyphChar] ?? data.glyphs["?"];
+    const glyph = data.glyphs[char] ?? data.glyphs["?"];
     if (!glyph) continue;
 
     if (glyph.o) {

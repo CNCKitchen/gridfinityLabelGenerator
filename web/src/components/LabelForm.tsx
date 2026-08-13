@@ -65,6 +65,10 @@ const LINE2_IMAGES = [
 
 const DEFAULT_FORMAT: TextFormat = { autoSize: true, hAlign: "center", vAlign: "center" };
 
+// '×' (U+00D7) is not supported by the STL font. Normalise any typed/pasted
+// multiplication sign to a plain lowercase 'x' at the input boundary.
+const sanitizeLabelText = (s: string): string => s.replace(/[\u00d7]/g, "x");
+
 interface LabelFormProps {
   onGenerate: (input: LabelInput) => Promise<void>;
   onPreviewChange?: (label: LabelInput) => void;
@@ -98,6 +102,8 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
   ];
 
   function buildLabel(): LabelInput {
+    const line1Out = sanitizeLabelText(line1);
+    const line2Out = sanitizeLabelText(line2);
     const clip = allCliparts.find((c) => c.id === selectedClipart);
     const iconSvg = clip?.svg ?? "";
     const iconViewBox = clip?.viewBox;
@@ -109,8 +115,8 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
     if (line2Mode === "image" && selectedLine2Image && on) {
       const img = LINE2_IMAGES.find((i) => i.id === selectedLine2Image)!;
       return {
-        title: [line1].filter(Boolean).join(" "),
-        line1,
+        title: [line1Out].filter(Boolean).join(" "),
+        line1: line1Out,
         line2: "",
         iconSvg,
         iconViewBox,
@@ -121,11 +127,11 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
         ...formats,
       };
     }
-    const title = on ? [line1, line2].filter(Boolean).join(" ") : line1;
+    const title = on ? [line1Out, line2Out].filter(Boolean).join(" ") : line1Out;
     return {
       title,
-      line1,
-      line2: on ? line2 : "",
+      line1: line1Out,
+      line2: on ? line2Out : "",
       iconSvg,
       iconViewBox,
       labelWidth,
@@ -192,7 +198,7 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
 
       <label>
         Line 1
-        <input value={line1} onChange={(e) => setLine1(e.target.value)} required />
+        <input value={line1} onChange={(e) => setLine1(sanitizeLabelText(e.target.value))} required />
       </label>
       <TextFormatControls label="Line 1 format" format={line1Format} onChange={setLine1Format} />
 
@@ -227,7 +233,7 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
         </div>
         {line2Enabled && (line2Mode === "text" ? (
           <>
-            <input value={line2} onChange={(e) => setLine2(e.target.value)} />
+            <input value={line2} onChange={(e) => setLine2(sanitizeLabelText(e.target.value))} />
             <TextFormatControls label="Line 2 format" format={line2Format} onChange={setLine2Format} />
           </>
         ) : (

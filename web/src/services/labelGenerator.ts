@@ -90,57 +90,14 @@ function cloneBaseMesh(): Mesh<BufferGeometry> {
 // Generates Three.js shapes for `text` at `size` with reduced letter spacing.
 // Replicates Three.js FontLoader's internal createPaths logic so we can apply
 // a custom tracking multiplier to each glyph's horizontal advance (ha).
-interface GlyphOverride {
-  char: string;
-  make: (size: number, offsetX: number) => { shapes: Shape[]; advance: number };
-}
 
-/**
- * Synthesized glyphs for characters missing from the bundled typeface.
- * Keeps the font file untouched and stays robust (no binary font editing).
- */
-const GLYPH_OVERRIDES: GlyphOverride[] = [
-  {
-    // "×" (multiplication sign): two crossed bars, unioned by ExtrudeGeometry.
-    // Kept optically centred (slightly above the baseline) with explicit left/right
-    // bearings, so it sits cleanly between neighbours instead of colliding (an
-    // un-bearinged wide cross centred on the advance point overlaps the glyph
-    // before it, e.g. in "M3×10").
-    char: "\u00d7",
-    make: (size, offsetX) => {
-      const a = size * 0.34; // half length
-      const b = size * 0.1; // half bar width
-      const halfDiag = Math.SQRT1_2 * (a + b); // half diagonal extent of a bar
-      const L = size * 0.08; // left bearing (clearance from previous glyph)
-      const R = size * 0.08; // right bearing (clearance to next glyph)
-      const cy = size * 0.2; // optical centre height above the baseline
-      const cx = offsetX + L + halfDiag; // centre of the drawn cross
-      const bars: Shape[] = [];
-      const dirs: Array<[number, number]> = [
-        [Math.SQRT1_2, Math.SQRT1_2], // +45°
-        [Math.SQRT1_2, -Math.SQRT1_2], // -45°
-      ];
-      for (const [ux, uy] of dirs) {
-        const px = -uy;
-        const py = ux; // perpendicular
-        const shape = new Shape();
-        const corners: Array<[number, number]> = [
-          [cx + a * ux + b * px, cy + a * uy + b * py],
-          [cx + a * ux - b * px, cy + a * uy - b * py],
-          [cx - a * ux - b * px, cy - a * uy - b * py],
-          [cx - a * ux + b * px, cy - a * uy + b * py],
-        ];
-        shape.moveTo(corners[0][0], corners[0][1]);
-        shape.lineTo(corners[1][0], corners[1][1]);
-        shape.lineTo(corners[2][0], corners[2][1]);
-        shape.lineTo(corners[3][0], corners[3][1]);
-        shape.closePath();
-        bars.push(shape);
-      }
-      return { shapes: bars, advance: L + 2 * halfDiag + R };
-    },
-  },
-];
+// The bundled helvetiker typeface has no '×' (U+00D7) glyph. Rather than build a
+// synthetic one (which can't be kerned and so sits at slightly the wrong height /
+// offset next to prepared glyphs), route it to the font's own lowercase 'x' glyph:
+// a clean, pre-kerned cross that is vertically centred exactly like digits.
+const GLYPH_SUBSTITUTIONS: Record<string, string> = {
+  "\u00d7": "x",
+};
 
 function generateShapesWithTracking(text: string, size: number): Shape[] {
   const data = (font as any).data as {
@@ -152,15 +109,8 @@ function generateShapesWithTracking(text: string, size: number): Shape[] {
   let offsetX = 0;
 
   for (const char of text) {
-    const override = GLYPH_OVERRIDES.find((o) => o.char === char);
-    if (override) {
-      const { shapes: synth, advance } = override.make(size, offsetX);
-      shapes.push(...synth);
-      offsetX += advance;
-      continue;
-    }
-
-    const glyph = data.glyphs[char] ?? data.glyphs["?"];
+    const glyphChar = GLYPH_SUBSTITUTIONS[char] ?? char;
+    const glyph = data.glyphs[glyphChar] ?? data.glyphs["?"];
     if (!glyph) continue;
 
     if (glyph.o) {

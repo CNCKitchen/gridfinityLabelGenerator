@@ -102,10 +102,19 @@ interface GlyphOverride {
 const GLYPH_OVERRIDES: GlyphOverride[] = [
   {
     // "×" (multiplication sign): two crossed bars, unioned by ExtrudeGeometry.
+    // Kept optically centred (slightly above the baseline) with explicit left/right
+    // bearings, so it sits cleanly between neighbours instead of colliding (an
+    // un-bearinged wide cross centred on the advance point overlaps the glyph
+    // before it, e.g. in "M3×10").
     char: "\u00d7",
     make: (size, offsetX) => {
-      const a = size * 0.38; // half length
+      const a = size * 0.34; // half length
       const b = size * 0.1; // half bar width
+      const halfDiag = Math.SQRT1_2 * (a + b); // half diagonal extent of a bar
+      const L = size * 0.08; // left bearing (clearance from previous glyph)
+      const R = size * 0.08; // right bearing (clearance to next glyph)
+      const cy = size * 0.2; // optical centre height above the baseline
+      const cx = offsetX + L + halfDiag; // centre of the drawn cross
       const bars: Shape[] = [];
       const dirs: Array<[number, number]> = [
         [Math.SQRT1_2, Math.SQRT1_2], // +45°
@@ -115,12 +124,11 @@ const GLYPH_OVERRIDES: GlyphOverride[] = [
         const px = -uy;
         const py = ux; // perpendicular
         const shape = new Shape();
-        const cx = offsetX;
         const corners: Array<[number, number]> = [
-          [cx + a * ux + b * px, a * uy + b * py],
-          [cx + a * ux - b * px, a * uy - b * py],
-          [cx - a * ux - b * px, -a * uy - b * py],
-          [cx - a * ux + b * px, -a * uy + b * py],
+          [cx + a * ux + b * px, cy + a * uy + b * py],
+          [cx + a * ux - b * px, cy + a * uy - b * py],
+          [cx - a * ux - b * px, cy - a * uy - b * py],
+          [cx - a * ux + b * px, cy - a * uy + b * py],
         ];
         shape.moveTo(corners[0][0], corners[0][1]);
         shape.lineTo(corners[1][0], corners[1][1]);
@@ -129,7 +137,7 @@ const GLYPH_OVERRIDES: GlyphOverride[] = [
         shape.closePath();
         bars.push(shape);
       }
-      return { shapes: bars, advance: size * 0.75 };
+      return { shapes: bars, advance: L + 2 * halfDiag + R };
     },
   },
 ];

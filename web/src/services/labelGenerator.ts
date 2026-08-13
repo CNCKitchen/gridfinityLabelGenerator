@@ -13,7 +13,14 @@ import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { FontLoader, type Font } from "three/examples/jsm/loaders/FontLoader.js";
-import type { LabelInput } from "../types/label";
+import type { LabelInput, TextFormat } from "../types/label";
+import {
+  clampManualSize,
+  DEFAULT_TEXT_FORMAT,
+  extendRectRight,
+  hAlignOffset,
+  vAlignOffset,
+} from "./geometry";
 
 const EMBOSS_HEIGHT = 0.4;
 
@@ -47,8 +54,12 @@ let CONTENT_ORIGIN_X: number;
 let CONTENT_ORIGIN_Y: number;
 let font: Font;
 
-// Per-call offset: shifts content right to centre it on wider labels
+// Per-call offset: shifts content right to centre it on wider labels.
+// With width-scaled text boxes (extendRectRight) this stays 0; the extra space
+// belongs to the text areas, not to symmetric centring.
 let contentXOffset = 0;
+// Extra width added for the current 2×/3× request, used to grow the text boxes.
+let currentExtraWidth = 0;
 
 function ensureInitialized(): Promise<void> {
   if (_init) return _init;
@@ -79,6 +90,50 @@ function cloneBaseMesh(): Mesh<BufferGeometry> {
 // Generates Three.js shapes for `text` at `size` with reduced letter spacing.
 // Replicates Three.js FontLoader's internal createPaths logic so we can apply
 // a custom tracking multiplier to each glyph's horizontal advance (ha).
+interface GlyphOverride {
+  char: string;
+  make: (size: number, offsetX: number) => { shapes: Shape[]; advance: number };
+}
+
+/**
+ * Synthesized glyphs for characters missing from the bundled typeface.
+ * Keeps the font file untouched and stays robust (no binary font editing).
+ */
+const GLYPH_OVERRIDES: GlyphOverride[] = [
+  {
+    // "×" (multiplication sign): two crossed bars, unioned by ExtrudeGeometry.
+    char: "\u00d7",
+    make: (size, offsetX) => {
+      const a = size * 0.38; // half length
+      const b = size * 0.1; // half bar width
+      const bars: Shape[] = [];
+      const dirs: Array<[number, number]> = [
+        [Math.SQRT1_2, Math.SQRT1_2], // +45°
+        [Math.SQRT1_2, -Math.SQRT1_2], // -45°
+      ];
+      for (const [ux, uy] of dirs) {
+        const px = -uy;
+        const py = ux; // perpendicular
+        const shape = new Shape();
+        const cx = offsetX;
+        const corners: Array<[number, number]> = [
+          [cx + a * ux + b * px, a * uy + b * py],
+          [cx + a * ux - b * px, a * uy - b * py],
+          [cx - a * ux - b * px, -a * uy - b * py],
+          [cx - a * ux + b * px, -a * uy + b * py],
+        ];
+        shape.moveTo(corners[0][0], corners[0][1]);
+        shape.lineTo(corners[1][0], corners[1][1]);
+        shape.lineTo(corners[2][0], corners[2][1]);
+        shape.lineTo(corners[3][0], corners[3][1]);
+        shape.closePath();
+        bars.push(shape);
+      }
+      return { shapes: bars, advance: size * 0.75 };
+    },
+  },
+];
+
 function generateShapesWithTracking(text: string, size: number): Shape[] {
   const data = (font as any).data as {
     resolution: number;
@@ -89,6 +144,14 @@ function generateShapesWithTracking(text: string, size: number): Shape[] {
   let offsetX = 0;
 
   for (const char of text) {
+    const override = GLYPH_OVERRIDES.find((o) => o.char === char);
+    if (override) {
+      const { shapes: synth, advance } = override.make(size, offsetX);
+      shapes.push(...synth);
+      offsetX += advance;
+      continue;
+    }
+
     const glyph = data.glyphs[char] ?? data.glyphs["?"];
     if (!glyph) continue;
 
@@ -270,7 +333,8 @@ function createTextLineMesh(
   x: number,
   y: number,
   width: number,
-  height: number
+  height: number,
+  format: TextFormat = DEFAULT_TEXT_FORMAT
 ): Mesh | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -297,24 +361,48 @@ function createTextLineMesh(
   const mesh = new Mesh(geometry, material);
   mesh.scale.set(scale, scale, 1);
 
-  const tx = x + (width - scaledWidth) / 2 - bounds.min.x * scale;
-  const ty = y + (height - scaledHeight) / 2 - bounds.min.y * scale;
+  // Align within the box (3×3 grid), honoured in 3D (Y-up) space.
+  const hOff = hAlignOffset(format.hAlign, width, scaledWidth);
+  const vOff = vAlignOffset(format.vAlign, height, scaledHeight, true);
+  const tx = x + hOff - bounds.min.x * scale;
+  const ty = y + vOff - bounds.min.y * scale;
   mesh.position.set(tx, ty, topZ - 0.4);
   return mesh;
+}
+
+/** Effective font size for a line: auto-fit by default, manual clamped to the box. */
+function effectiveFontSize(
+  text: string,
+  boxW: number,
+  boxH: number,
+  format?: TextFormat
+): number {
+  const auto = chooseTextSizeForBox(text, boxW, boxH);
+  if (!format || format.autoSize !== false) return auto;
+  const manual = format.fontSize || auto;
+  return clampManualSize(manual, 1.2, auto); // last value is the "limit" (max that fits)
 }
 
 function buildTextMeshes(label: LabelInput): Mesh[] {
   const hasIcon = !!label.iconText || !!label.iconSvg;
   const hasLine1 = !!label.line1.trim();
-  const hasLine2 = !!label.line2Svg || !!label.line2.trim();
+  const line2Enabled = label.line2Enabled !== false;
+  const hasLine2 = line2Enabled && (!!label.line2Svg || !!label.line2.trim());
 
-  // The only present line gets the label's full height
-  const topRect = !hasLine2
-    ? (hasIcon ? TEXT_SINGLE_BOX : TEXT_SINGLE_BOX_NO_ICON)
-    : (hasIcon ? TEXT_TOP_BOX : TEXT_TOP_BOX_NO_ICON);
-  const bottomRect = !hasLine1
-    ? (hasIcon ? TEXT_SINGLE_BOX : TEXT_SINGLE_BOX_NO_ICON)
-    : (hasIcon ? TEXT_BOTTOM_BOX : TEXT_BOTTOM_BOX_NO_ICON);
+  // The only present line gets the label's full height. Text boxes are widened
+  // by currentExtraWidth so 2×/3× labels get genuinely more text room.
+  const topRect = extendRectRight(
+    !hasLine2
+      ? (hasIcon ? TEXT_SINGLE_BOX : TEXT_SINGLE_BOX_NO_ICON)
+      : (hasIcon ? TEXT_TOP_BOX : TEXT_TOP_BOX_NO_ICON),
+    currentExtraWidth
+  );
+  const bottomRect = extendRectRight(
+    !hasLine1
+      ? (hasIcon ? TEXT_SINGLE_BOX : TEXT_SINGLE_BOX_NO_ICON)
+      : (hasIcon ? TEXT_BOTTOM_BOX : TEXT_BOTTOM_BOX_NO_ICON),
+    currentExtraWidth
+  );
 
   const topBox = toWorldBox(topRect);
   const bottomBox = toWorldBox(bottomRect);
@@ -323,17 +411,21 @@ function buildTextMeshes(label: LabelInput): Mesh[] {
 
   const meshes: Mesh[] = [];
 
-  const topFontSize = chooseTextSizeForBox(label.line1, topSize.width, topSize.height);
-  const line1Mesh = createTextLineMesh(label.line1, topFontSize, topBox.x1, topBox.y1, topSize.width, topSize.height);
+  const format1 = label.line1Format;
+  const topFontSize = effectiveFontSize(label.line1, topSize.width, topSize.height, format1);
+  const line1Mesh = createTextLineMesh(label.line1, topFontSize, topBox.x1, topBox.y1, topSize.width, topSize.height, format1);
   if (line1Mesh) meshes.push(line1Mesh);
 
-  if (label.line2Svg) {
-    const line2Mesh = buildSvgMeshInBox(label.line2Svg, bottomRect);
-    if (line2Mesh) meshes.push(line2Mesh);
-  } else {
-    const bottomFontSize = chooseTextSizeForBox(label.line2, bottomSize.width, bottomSize.height);
-    const line2Mesh = createTextLineMesh(label.line2, bottomFontSize, bottomBox.x1, bottomBox.y1, bottomSize.width, bottomSize.height);
-    if (line2Mesh) meshes.push(line2Mesh);
+  if (hasLine2) {
+    if (label.line2Svg) {
+      const line2Mesh = buildSvgMeshInBox(label.line2Svg, bottomRect);
+      if (line2Mesh) meshes.push(line2Mesh);
+    } else {
+      const format2 = label.line2Format;
+      const bottomFontSize = effectiveFontSize(label.line2, bottomSize.width, bottomSize.height, format2);
+      const line2Mesh = createTextLineMesh(label.line2, bottomFontSize, bottomBox.x1, bottomBox.y1, bottomSize.width, bottomSize.height, format2);
+      if (line2Mesh) meshes.push(line2Mesh);
+    }
   }
 
   return meshes;
@@ -349,8 +441,10 @@ export async function generateLabelStl(label: LabelInput): Promise<ArrayBuffer> 
 
   const width = label.labelWidth ?? 1;
   const extraWidth = (width - 1) * 42;
-  // Centre the marking on the expanded label
-  contentXOffset = extraWidth / 2;
+  // Width-scaled text boxes carry the extra room; content is left-anchored
+  // (icon at far left) instead of centred into a fixed-size block.
+  currentExtraWidth = extraWidth;
+  contentXOffset = 0;
 
   const baseMesh = cloneBaseMesh();
   if (extraWidth > 0) widenGeometry(baseMesh.geometry, extraWidth);

@@ -383,3 +383,133 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Per-line text formatting (TextFormatControls) ---- */
+.format-controls {
+  background: #16233a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.format-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+}
+.format-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.size-row {
+  justify-content: space-between;
+}
+.inline-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.size-input {
+  width: 72px;
+}
+.align-row {
+  gap: 8px;
+}
+.align-axis {
+  font-size: 11px;
+  color: #64748b;
+  width: 12px;
+}
+.align-grid {
+  display: flex;
+  gap: 3px;
+}
+.align-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  border-radius: 6px;
+}
+.align-btn:hover:not(.active) {
+  border-color: #64748b;
+  color: #e2e8f0;
+}
+.align-btn.active {
+  border-color: #22c55e;
+  color: #e2e8f0;
+}
+
+/* ---- Custom imported icons ---- */
+.custom-symbol {
+  position: relative;
+  padding: 8px;
+}
+.custom-symbol .symbol-select {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 400;
+  text-align: center;
+  width: 100%;
+}
+.custom-symbol.selected .symbol-select {
+  color: #e2e8f0;
+}
+.symbol-remove {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  background: #7f1d1d;
+  border: 1px solid #ef4444;
+  color: #fecaca;
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.symbol-remove:hover {
+  background: #991b1b;
+}
+.import-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.import-btn {
+  border-radius: 6px;
+  border: 1px dashed #475569;
+  background: transparent;
+  color: #cbd5e1;
+  cursor: pointer;
+}
+.import-btn:hover {
+  border-color: #22c55e;
+  color: #e2e8f0;
+}
+.import-hint {
+  font-size: 11px;
+  color: #64748b;
+}
+.msg-inline {
+  font-size: 12px;
+}

@@ -328,7 +328,7 @@ function effectiveFontSize(
 ): number {
   const auto = chooseTextSizeForBox(text, boxW, boxH);
   if (!format || format.autoSize !== false) return auto;
-  const manual = format.fontSize || auto;
+  const manual = format.fontSize ?? auto;
   return clampManualSize(manual, 1.2, auto); // last value is the "limit" (max that fits)
 }
 

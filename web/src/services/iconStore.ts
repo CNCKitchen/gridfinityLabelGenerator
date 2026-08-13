@@ -2,59 +2,94 @@ import type { CustomIconMeta } from "../types/label";
 
 const STORAGE_KEY = "gflg.customIcons";
 
+// The picker/preview render every icon as a fixed A4-sized <image> and crop with
+// an outer viewBox that lives in that A4 ("793.7 × 1122.5") coordinate space.
+// Imported SVGs arrive in arbitrary user units, so we normalise them into that
+// A4 space at import time: the returned svg is rewrapped so its content sits on
+// the A4 canvas, and the returned viewBox crops exactly to it. The STL/Three.js
+// path ignores viewBox (it auto-fits the real path geometry), so it is unaffected.
+const A4_W = 793.70079;
+const A4_H = 1122.5197;
+
 /**
- * Computes a content crop viewBox ("x y w h") for an arbitrary SVG by measuring
- * the actual graphics bounding box in the browser (getBBox), then adding a small
- * padding. Robust for Inkscape/A4 SVGs whose viewBox spans the whole canvas.
- * Falls back to the SVG's own viewBox if measurement fails.
+ * Measures the content bounding box of an SVG in its own user units by temporary
+ * DOM insertion + getBBox (robust for Inkscape/A4 canvases and small icons alike).
  */
-export function computeSvgViewBox(svgString: string): string {
+function measureContentBox(svgString: string): { x: number; y: number; w: number; h: number } {
+  const doc = new DOMParser().parseFromString(svgString, "image/svg+xml");
+  const root = doc.documentElement;
+
+  const ns = "http://www.w3.org/2000/svg";
+  const container = document.createElementNS(ns, "svg");
+  container.style.cssText =
+    "position:absolute;left:-10000px;top:0;width:400px;height:400px;visibility:hidden;pointer-events:none";
+  let box = { x: 0, y: 0, w: 0, h: 0 };
   try {
-    const doc = new DOMParser().parseFromString(svgString, "image/svg+xml");
-    const root = doc.documentElement;
-    if (!root) throw new Error("no root");
-
-    const ns = "http://www.w3.org/2000/svg";
-    const container = document.createElementNS(ns, "svg");
-    container.setAttribute("width", "400");
-    container.setAttribute("height", "400");
-    container.style.cssText =
-      "position:absolute;left:-10000px;top:0;width:400px;height:400px;visibility:hidden;pointer-events:none";
     document.body.appendChild(container);
-
-    // Detach the source root so getBBox reports the svg's *own* user units
-    // regardless of any parent layout/scaling.
     const imported = document.importNode(root, true) as unknown as SVGSVGElement;
     container.appendChild(imported);
-
     let b = imported.getBBox();
-    // Some inliners nest the real content in a <g>: measure that too if empty.
+    // Some SVGs nest the real drawing in a <g> whose own bbox is empty.
     if ((!b || b.width <= 0) && imported.firstElementChild) {
       b = (imported.firstElementChild as SVGGraphicsElement).getBBox();
     }
-
-    document.body.removeChild(container);
-
     if (b && b.width > 0 && b.height > 0 && Number.isFinite(b.x) && Number.isFinite(b.y)) {
-      const pad = Math.max(b.width, b.height) * 0.02;
-      const x = b.x - pad;
-      const y = b.y - pad;
-      const w = b.width + pad * 2;
-      const h = b.height + pad * 2;
-      return `${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)}`;
+      box = { x: b.x, y: b.y, w: b.width, h: b.height };
     }
   } catch {
-    // fall through to fallbacks
+    // fall through to the source viewBox below
+  } finally {
+    if (container.parentNode) container.parentNode.removeChild(container);
   }
-
+  if (box.w > 0) return box;
+  // Fallback: fit to the source's own viewBox (or a sensible default).
   try {
-    const root = new DOMParser().parseFromString(svgString, "image/svg+xml").documentElement;
     const vb = root.getAttribute("viewBox");
-    if (vb) return vb;
+    if (vb) {
+      const [x, y, w, h] = vb.split(/[\s,]+/).map(Number);
+      if (w > 0 && h > 0) return { x, y, w, h };
+    }
   } catch {
     // ignore
   }
-  return "0 0 793 1122"; // A4-canvas guess
+  return { x: 0, y: 0, w: 24, h: 24 };
+}
+
+/**
+ * Rewraps an imported SVG into the fixed A4 coordinate space the UI expects,
+ * centering the content (preserving aspect ratio, with padding) on the A4 canvas.
+ * Returns the rewritten SVG plus the corresponding content-crop viewBox.
+ */
+export function normalizeImportedSvg(svgString: string): { svg: string; viewBox: string } {
+  const doc = new DOMParser().parseFromString(svgString, "image/svg+xml");
+  const root = doc.documentElement;
+
+  const { x: bx, y: by, w: bw, h: bh } = measureContentBox(svgString);
+
+  const pad = Math.max(bw, bh) * 0.02;
+  const scale = Math.min((A4_W - 2 * pad) / Math.max(bw, 1), (A4_H - 2 * pad) / Math.max(bh, 1));
+  const gW = bw * scale;
+  const gH = bh * scale;
+  const tx = (A4_W - gW) / 2;
+  const ty = (A4_H - gH) / 2;
+
+  const ns = "http://www.w3.org/2000/svg";
+  const wrap = document.createElementNS(ns, "svg");
+  wrap.setAttribute("xmlns", ns);
+  wrap.setAttribute("viewBox", `0 0 ${A4_W} ${A4_H}`);
+  const group = document.createElementNS(ns, "g");
+  group.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
+  // Drop the source root's own transform/viewBox by importing only its children.
+  for (const child of Array.from(root.childNodes)) {
+    group.appendChild(wrap.ownerDocument.importNode(child, true));
+  }
+  wrap.appendChild(group);
+
+  const svg = new XMLSerializer().serializeToString(wrap);
+  // Crop the A4 canvas to the (centered) content box, with a little breathing room.
+  const m = Math.max(bw, bh) * 0.1 * scale;
+  const viewBox = `${(tx - m).toFixed(2)} ${(ty - m).toFixed(2)} ${(gW + m * 2).toFixed(2)} ${(gH + m * 2).toFixed(2)}`;
+  return { svg, viewBox };
 }
 
 export function loadCustomIcons(): CustomIconMeta[] {
@@ -72,25 +107,20 @@ export function saveCustomIcons(icons: CustomIconMeta[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(icons));
   } catch {
-    // storage full / unavailable — ignore (icons stay session-only)
+    // Storage full / unavailable — icons stay session-only.
   }
 }
 
-export function addCustomIcon(icons: CustomIconMeta[], svgString: string, name: string): CustomIconMeta[] {
-  const viewBox = computeSvgViewBox(svgString);
-  const meta: CustomIconMeta = {
+export function buildCustomIcon(svgString: string, name: string): CustomIconMeta {
+  const { svg, viewBox } = normalizeImportedSvg(svgString);
+  return {
     id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name: name.trim() || "Custom icon",
-    svg: svgString,
+    svg,
     viewBox,
   };
-  const next = [...icons, meta];
-  saveCustomIcons(next);
-  return next;
 }
 
 export function removeCustomIcon(icons: CustomIconMeta[], id: string): CustomIconMeta[] {
-  const next = icons.filter((i) => i.id !== id);
-  saveCustomIcons(next);
-  return next;
+  return icons.filter((i) => i.id !== id);
 }

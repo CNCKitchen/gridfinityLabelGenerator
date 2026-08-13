@@ -1,5 +1,5 @@
 import type { LabelInput, TextFormat } from "../types/label";
-import { clampManualSize, labelExtraWidth, labelPhysicalWidth } from "../services/geometry";
+import { clampManualSize, DEFAULT_TEXT_FORMAT, labelExtraWidth, labelPhysicalWidth } from "../services/geometry";
 
 // Label DXF paths extracted from label.svg (Inkscape DXF export, 96 dpi).
 // LABEL_TRANSFORM maps local px → overlay mm (0..37.8 × 0..11.5):
@@ -11,6 +11,10 @@ const LABEL_TRANSFORM = "scale(0.264583) translate(137.19, -1120.59)";
 // SVG Y increases downward; 3D Y increases upward — boxes are pre-flipped.
 const LABEL_BASE_W = 37.8;
 const LABEL_H = 11.5;
+
+// The screw SVG (screw_lowHead.svg) has an A4-sized viewBox (793×1122).
+// This viewBox crops to the actual screw path area, matching the line-2 box AR (~5:1).
+const SCREW_SVG_VIEWBOX = "32.4 18.7 80.2 16";
 
 // Base (1×) boxes. Text boxes widen by labelExtraWidth for 2×/3× labels.
 const ICON_BOX = { x: 3.0, y: 1.0, w: 9.5, h: 9.5 };
@@ -35,7 +39,7 @@ interface Box { x: number; y: number; w: number; h: number }
 function effectiveFontSize(text: string, box: Box, format?: TextFormat): number {
   const auto = fittingFontSize(text, box.w, box.h);
   if (!format || format.autoSize !== false) return auto;
-  return clampManualSize(format.fontSize || auto, 1.2, auto);
+  return clampManualSize(format.fontSize ?? auto, 1.2, auto);
 }
 
 interface LabelPreviewProps {
@@ -48,13 +52,14 @@ export function LabelPreview({ label }: LabelPreviewProps) {
   const labelW = labelPhysicalWidth(labelWidth);
 
   // Widen every text box (not the icon box) so 2×/3× labels get more text room.
+  // (lower-case on purpose: these are per-render derived boxes, not module consts)
   const widen = (b: Box): Box => ({ ...b, w: b.w + extraW });
-  const LINE1_BOX = widen(LINE1_BOX_BASE);
-  const LINE2_BOX = widen(LINE2_BOX_BASE);
-  const FULL_LINE1_BOX = widen(FULL_LINE1_BOX_BASE);
-  const FULL_LINE2_BOX = widen(FULL_LINE2_BOX_BASE);
-  const SINGLE_LINE_BOX = widen(SINGLE_LINE_BOX_BASE);
-  const FULL_SINGLE_LINE_BOX = widen(FULL_SINGLE_LINE_BOX_BASE);
+  const line1Box = widen(LINE1_BOX_BASE);
+  const line2Box = widen(LINE2_BOX_BASE);
+  const fullLine1Box = widen(FULL_LINE1_BOX_BASE);
+  const fullLine2Box = widen(FULL_LINE2_BOX_BASE);
+  const singleLineBox = widen(SINGLE_LINE_BOX_BASE);
+  const fullSingleLineBox = widen(FULL_SINGLE_LINE_BOX_BASE);
 
   // Outer viewBox adds 1mm margin on all sides so the label outline stroke isn't clipped
   const VB_MARGIN = 1;
@@ -62,7 +67,10 @@ export function LabelPreview({ label }: LabelPreviewProps) {
 
   const line2Enabled = label ? label.line2Enabled !== false : true;
   const hasLine2 = line2Enabled && !!(label?.line2Svg || label?.line2?.trim());
-  // Stretch factor for the fixed body outline (left edge stays, right edge moves out).
+  // Stretch factor for the fixed body outline: the whole DXF outline is scaled about
+  // the left edge, so on 2×/3× the outline is an approximation (the real STL keeps
+  // the left half unscaled and extends only the right half). Icon/text boxes are
+  // drawn in absolute mm and are unaffected by this scaling.
   const bodyScaleX = labelW / LABEL_BASE_W;
 
   function renderLabelShape() {
@@ -174,7 +182,7 @@ export function LabelPreview({ label }: LabelPreviewProps) {
   /** One justified text line honouring the 3×3 alignment grid within `box`. */
   function renderTextLine(text: string, box: Box, format?: TextFormat) {
     const fs = effectiveFontSize(text, box, format);
-    const fmt = format ?? { autoSize: true, hAlign: "center", vAlign: "center" };
+    const fmt = format ?? DEFAULT_TEXT_FORMAT;
 
     const hAnchor = fmt.hAlign === "left" ? "start" : fmt.hAlign === "right" ? "end" : "middle";
     const x =
@@ -205,7 +213,7 @@ export function LabelPreview({ label }: LabelPreviewProps) {
     if (!label?.line1) return null;
     const hasIcon = !!(label.iconSvg || label.iconText);
     const isOnlyLine = !hasLine2;
-    const box = isOnlyLine ? (hasIcon ? SINGLE_LINE_BOX : FULL_SINGLE_LINE_BOX) : hasIcon ? LINE1_BOX : FULL_LINE1_BOX;
+    const box = isOnlyLine ? (hasIcon ? singleLineBox : fullSingleLineBox) : hasIcon ? line1Box : fullLine1Box;
     return renderTextLine(label.line1, box, label.line1Format);
   }
 
@@ -217,8 +225,8 @@ export function LabelPreview({ label }: LabelPreviewProps) {
 
     if (label.line2Svg) {
       const svgBox = isOnlyLine
-        ? hasIcon ? SINGLE_LINE_BOX : FULL_SINGLE_LINE_BOX
-        : hasIcon ? LINE2_BOX : FULL_LINE2_BOX;
+        ? hasIcon ? singleLineBox : fullSingleLineBox
+        : hasIcon ? line2Box : fullLine2Box;
       const vb = label.line2ViewBox ?? SCREW_SVG_VIEWBOX;
       const encoded = encodeURIComponent(label.line2Svg);
       return (
@@ -249,8 +257,8 @@ export function LabelPreview({ label }: LabelPreviewProps) {
 
     if (!label.line2) return null;
     const box = isOnlyLine
-      ? hasIcon ? SINGLE_LINE_BOX : FULL_SINGLE_LINE_BOX
-      : hasIcon ? LINE2_BOX : FULL_LINE2_BOX;
+      ? hasIcon ? singleLineBox : fullSingleLineBox
+      : hasIcon ? line2Box : fullLine2Box;
     return renderTextLine(label.line2, box, label.line2Format);
   }
 
@@ -268,7 +276,3 @@ export function LabelPreview({ label }: LabelPreviewProps) {
     </svg>
   );
 }
-
-// The screw SVG (screw_lowHead.svg) has an A4-sized viewBox (793×1122).
-// This viewBox crops to the actual screw path area, matching LINE2_BOX AR (~5:1).
-const SCREW_SVG_VIEWBOX = "32.4 18.7 80.2 16";

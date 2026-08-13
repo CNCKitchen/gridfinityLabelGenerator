@@ -28,7 +28,7 @@ import trpPanHeadSvg from "../assets/TRP_PanHead.svg?raw";
 import trpPanSelfTapSvg from "../assets/TRP_panHead_selfTapping.svg?raw";
 
 import { TextFormatControls } from "./TextFormatControls";
-import { addCustomIcon, loadCustomIcons, removeCustomIcon } from "../services/iconStore";
+import { buildCustomIcon, loadCustomIcons, removeCustomIcon, saveCustomIcons } from "../services/iconStore";
 
 const CLIPARTS = [
   { id: "hex",          label: "Hex",         svg: hexSvg,         viewBox: "299 276 111 111" },
@@ -86,14 +86,21 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
   const [line2Enabled, setLine2Enabled] = useState(true);
   const [line1Format, setLine1Format] = useState<TextFormat>(DEFAULT_FORMAT);
   const [line2Format, setLine2Format] = useState<TextFormat>(DEFAULT_FORMAT);
-  const [customIcons, setCustomIcons] = useState<CustomIconMeta[]>([]);
+  const [customIcons, setCustomIcons] = useState<CustomIconMeta[]>(() => loadCustomIcons());
   const [importError, setImportError] = useState("");
   const [loading, setLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-
+  // Persist custom icons whenever they change (central place — keeps state
+  // updaters pure). The first render is skipped so we never overwrite the stored
+  // icons with the already-populated initial state.
+  const isFirstRender = useRef(true);
   useEffect(() => {
-    setCustomIcons(loadCustomIcons());
-  }, []);
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    saveCustomIcons(customIcons);
+  }, [customIcons]);
 
   // Custom icons merged after the built-in cliparts for lookup/selection.
   const allCliparts = [
@@ -175,21 +182,17 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
         return;
       }
       const name = file.name.replace(/\.svg$/i, "").replace(/[_-]+/g, " ");
-      const next = addCustomIcon(customIcons, text, name);
-      setCustomIcons(next);
-      const added = next[next.length - 1];
-      if (added) setSelectedClipart(added.id);
+      const meta = buildCustomIcon(text, name);
+      setCustomIcons((cur) => [...cur, meta]);
+      setSelectedClipart(meta.id);
     } catch {
       setImportError("Could not read the SVG file.");
     }
   };
 
   const handleRemoveIcon = (id: string) => {
-    setCustomIcons((cur) => {
-      const next = removeCustomIcon(cur, id);
-      if (selectedClipart === id) setSelectedClipart(null);
-      return next;
-    });
+    setCustomIcons((cur) => removeCustomIcon(cur, id));
+    if (selectedClipart === id) setSelectedClipart(null);
   };
 
   return (

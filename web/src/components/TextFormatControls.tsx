@@ -107,12 +107,14 @@ export function TextFormatControls({ label, format, onChange, maxSize }: TextFor
 
       <div className="format-row align-row">
         <span className="align-axis">H</span>
-        <div className="align-grid">
+        <div className="align-grid" role="group" aria-label="Horizontal alignment">
           {H_OPTS.map((o) => (
             <button
               key={o.v}
               type="button"
               className={`align-btn${format.hAlign === o.v ? " active" : ""}`}
+              aria-pressed={format.hAlign === o.v}
+              aria-label={o.title}
               onClick={() => onChange({ ...format, hAlign: o.v })}
               title={o.title}
             >
@@ -121,12 +123,14 @@ export function TextFormatControls({ label, format, onChange, maxSize }: TextFor
           ))}
         </div>
         <span className="align-axis">V</span>
-        <div className="align-grid">
+        <div className="align-grid" role="group" aria-label="Vertical alignment">
           {V_OPTS.map((o) => (
             <button
               key={o.v}
               type="button"
               className={`align-btn${format.vAlign === o.v ? " active" : ""}`}
+              aria-pressed={format.vAlign === o.v}
+              aria-label={o.title}
               onClick={() => onChange({ ...format, vAlign: o.v })}
               title={o.title}
             >

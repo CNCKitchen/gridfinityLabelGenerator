@@ -17,8 +17,12 @@ import {
   extendRectRight,
   hAlignOffset,
   ICON_AREA_X_SVG,
+  LINE1_TOP_Y,
+  LINE2_TOP_Y,
+  SINGLE_LINE_HEIGHT,
   TEXT_RIGHT_EDGE_SVG,
   textLineStartSvg,
+  TWO_LINE_HEIGHT,
   vAlignOffset,
 } from "./geometry";
 import { BUILTIN_IMAGES } from "./imageRegistry";
@@ -57,11 +61,6 @@ let baseGeometry: BufferGeometry;
 let topZ: number;
 let CONTENT_ORIGIN_X: number;
 let CONTENT_ORIGIN_Y: number;
-
-// Per-request width for 2×/3× labels, used to grow the text boxes. These module
-// globals are NOT concurrency-safe by design: generateLabelStl must never run
-// in parallel (the batch exporter awaits sequentially). Keep single-threaded.
-let currentExtraWidth = 0;
 
 function ensureInitialized(): Promise<void> {
   if (_init) return _init;
@@ -403,7 +402,11 @@ function buildIconRowMeshes(label: LabelInput, registry: ImageAsset[]): (Mesh | 
   return iconMesh ? [iconMesh] : [];
 }
 
-async function buildTextMeshes(label: LabelInput, registry: ImageAsset[]): Promise<(Mesh | Group)[]> {
+async function buildTextMeshes(
+  label: LabelInput,
+  registry: ImageAsset[],
+  extraWidth: number
+): Promise<(Mesh | Group)[]> {
   const iconW = computeIconRowWidth(label, registry);
   const hasLine1 = !!label.line1.trim();
   const line2Enabled = label.line2Enabled !== false;
@@ -414,15 +417,22 @@ async function buildTextMeshes(label: LabelInput, registry: ImageAsset[]): Promi
   const left = textLineStartSvg(iconW) - STL_SVG_ORIGIN;
   const right = TEXT_RIGHT_EDGE_SVG - STL_SVG_ORIGIN;
 
+  // Y is flipped by 0.5 from the SVG space; the box verticals reuse the shared
+  // geometry constants so the single-line/two-line split can't drift apart.
+  const stlY = (svgY: number): number => svgY - 0.5;
   // The only present line gets the label's full height. Boxes are widened by
-  // currentExtraWidth so 2×/3× labels get genuinely more text room.
+  // extraWidth so 2×/3× labels get genuinely more text room.
   const topRect = extendRectRight(
-    !hasLine2 ? { x1: left, y1: 0.5, x2: right, y2: 10 } : { x1: left, y1: 5.75, x2: right, y2: 10 },
-    currentExtraWidth
+    !hasLine2
+      ? { x1: left, y1: stlY(LINE1_TOP_Y), x2: right, y2: stlY(LINE1_TOP_Y + SINGLE_LINE_HEIGHT) }
+      : { x1: left, y1: stlY(LINE2_TOP_Y), x2: right, y2: stlY(LINE2_TOP_Y + TWO_LINE_HEIGHT) },
+    extraWidth
   );
   const bottomRect = extendRectRight(
-    !hasLine1 ? { x1: left, y1: 0.5, x2: right, y2: 10 } : { x1: left, y1: 0.5, x2: right, y2: 4.75 },
-    currentExtraWidth
+    !hasLine1
+      ? { x1: left, y1: stlY(LINE1_TOP_Y), x2: right, y2: stlY(LINE1_TOP_Y + SINGLE_LINE_HEIGHT) }
+      : { x1: left, y1: stlY(LINE1_TOP_Y), x2: right, y2: stlY(LINE1_TOP_Y + TWO_LINE_HEIGHT) },
+    extraWidth
   );
 
   const topBox = toWorldBox(topRect);
@@ -468,7 +478,6 @@ export async function generateLabelStl(label: LabelInput): Promise<ArrayBuffer> 
   const extraWidth = (width - 1) * 42;
   // Width-scaled text boxes carry the extra room; content is left-anchored
   // (icon at far left) instead of centred into a fixed-size block.
-  currentExtraWidth = extraWidth;
 
   const baseMesh = cloneBaseMesh();
   if (extraWidth > 0) widenGeometry(baseMesh.geometry, extraWidth);
@@ -478,7 +487,7 @@ export async function generateLabelStl(label: LabelInput): Promise<ArrayBuffer> 
   const root = new Group();
   root.add(baseMesh);
   for (const m of buildIconRowMeshes(label, registry)) root.add(m);
-  for (const textMesh of await buildTextMeshes(label, registry)) {
+  for (const textMesh of await buildTextMeshes(label, registry, extraWidth)) {
     root.add(textMesh);
   }
   root.updateMatrixWorld(true);

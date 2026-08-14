@@ -53,7 +53,7 @@ export const SCREW_IMAGES: ImageAsset[] = [
   { id: "cyl",    name: "Cylinder Head", svg: trpCylinderSvg,    viewBox: "19 1080 96 31"  },
   { id: "cyl-st", name: "Cyl Self-Tap",  svg: trpCylSelfTapSvg,  viewBox: "133 400 103 35" },
   { id: "grub",   name: "Grub Screw",    svg: trpGrubSvg,        viewBox: "84 265 44 22"  },
-  { id: "hex",    name: "Hex Head",      svg: trpHexagonSvg,     viewBox: "12 1000 93 33"  },
+  { id: "hex-head", name: "Hex Head",      svg: trpHexagonSvg,     viewBox: "12 1000 93 33"  },
   { id: "low",    name: "Low Head",      svg: trpLowHeadSvg,     viewBox: "28 1042 93 32"  },
   { id: "pan",    name: "Pan Head",      svg: trpPanHeadSvg,     viewBox: "72 977 107 31"  },
   { id: "pan-st", name: "Pan Self-Tap",  svg: trpPanSelfTapSvg,  viewBox: "134 329 97 33" },

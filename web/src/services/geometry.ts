@@ -93,6 +93,13 @@ export const ICON_AREA_X_SVG = 3.0; // left edge of the (large) symbol/icon row
 export const TEXT_ICON_GAP = 1.0; // gap between the icon row and the text lines
 export const TEXT_RIGHT_EDGE_SVG = 34.8; // right edge all text boxes share (37.8 - margin)
 
+// Vertical line-box geometry (SVG-mm, Y grows downward). Shared with the STL
+// exporter so the single-line vs two-line split stays identical in both renderers.
+export const LINE1_TOP_Y = 1.0; // top of the text area
+export const SINGLE_LINE_HEIGHT = 9.5; // full text height when only one line is present
+export const TWO_LINE_HEIGHT = 4.25; // per-line height when both lines are present
+export const LINE2_TOP_Y = 6.25; // top of line 2 when both lines are present
+
 /** Left edge (SVG-mm) of the text lines given the left icon-row width. */
 export function textLineStartSvg(iconRowWidth: number): number {
   return iconRowWidth > 0 ? ICON_AREA_X_SVG + iconRowWidth + TEXT_ICON_GAP : ICON_AREA_X_SVG;
@@ -115,7 +122,7 @@ export function resolveLineBoxes(
   const startX = textLineStartSvg(iconRowWidth);
   const width = TEXT_RIGHT_EDGE_SVG - startX + extra;
   const box = (y: number, h: number): Box2 => ({ x: startX, y, w: width, h });
-  const line1 = !hasLine2 ? box(1.0, 9.5) : box(1.0, 4.25);
-  const line2 = !hasLine1 ? box(1.0, 9.5) : box(6.25, 4.25);
+  const line1 = !hasLine2 ? box(LINE1_TOP_Y, SINGLE_LINE_HEIGHT) : box(LINE1_TOP_Y, TWO_LINE_HEIGHT);
+  const line2 = !hasLine1 ? box(LINE1_TOP_Y, SINGLE_LINE_HEIGHT) : box(LINE2_TOP_Y, TWO_LINE_HEIGHT);
   return { line1, line2 };
 }

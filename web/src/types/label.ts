@@ -18,26 +18,23 @@ export interface TextFormat {
   vAlign: VAlign;
 }
 
-/** A user-imported SVG icon stored in the browser. */
-export interface CustomIconMeta {
-  id: string;
-  name: string;
-  svg: string;
-  /** Content viewBox ("x y w h") auto-derived from the SVG paths. */
-  viewBox: string;
-}
-
 /**
  * A named image that can be embedded in a line's text via `${Name}`.
- * `name` is the ID a user types in the text (e.g. "Button Head"); `svg` is the
- * source SVG and `viewBox` its tight content crop. Built-in cliparts, the
- * screw-profile images and user-imported icons all expose this shape.
+ * `name` is what a user types in the text (e.g. "Button Head"); `svg` is the
+ * source SVG and `viewBox` its tight content crop. Built-in cliparts and the
+ * screw-profile images expose this shape directly.
  */
 export interface ImageAsset {
   id: string;
   name: string;
   svg: string;
   viewBox?: string;
+}
+
+/** A user-imported SVG icon stored in the browser. */
+export interface CustomIconMeta extends ImageAsset {
+  /** Content viewBox ("x y w h") auto-derived from the SVG paths. Required here. */
+  viewBox: string;
 }
 
 export interface LabelInput {

@@ -16,6 +16,8 @@ interface TextFormatControlsProps {
   label: string;
   format: TextFormat;
   onChange: (f: TextFormat) => void;
+  /** Upper bound for the manual size (the largest size that fits the line's box). */
+  maxSize?: number;
 }
 
 /**
@@ -23,7 +25,8 @@ interface TextFormatControlsProps {
  * horizontal/vertical alignment grid. "Auto" sizing (default) picks the largest
  * size that fits the box; the manual field is clamped so it can never overflow.
  */
-export function TextFormatControls({ label, format, onChange }: TextFormatControlsProps) {
+export function TextFormatControls({ label, format, onChange, maxSize }: TextFormatControlsProps) {
+  const sizeInput = format.fontSize ?? "";
   return (
     <div className="format-controls">
       <div className="format-title">{label}</div>
@@ -41,13 +44,23 @@ export function TextFormatControls({ label, format, onChange }: TextFormatContro
           className="size-input"
           type="number"
           min="1.2"
-          max="20"
+          max={maxSize ?? 20}
           step="0.1"
-          value={format.fontSize ?? ""}
+          value={sizeInput}
           disabled={format.autoSize}
           placeholder="Size"
           title="Manual font size (mm). Clamped to fit the box."
-          onChange={(e) => onChange({ ...format, fontSize: e.target.value ? Number(e.target.value) : undefined })}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (!raw) {
+              onChange({ ...format, fontSize: undefined });
+              return;
+            }
+            const lower = 1.2;
+            const upper = maxSize && maxSize > lower ? maxSize : 20;
+            const clamped = Math.max(lower, Math.min(upper, Number(raw)));
+            onChange({ ...format, fontSize: clamped });
+          }}
         />
       </div>
 

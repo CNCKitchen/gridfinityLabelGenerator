@@ -29,6 +29,8 @@ import trpPanSelfTapSvg from "../assets/TRP_panHead_selfTapping.svg?raw";
 
 import { TextFormatControls } from "./TextFormatControls";
 import { buildCustomIcon, loadCustomIcons, removeCustomIcon, saveCustomIcons } from "../services/iconStore";
+import { resolveLineBoxes } from "../services/geometry";
+import { maxFittingSize } from "../services/textMetrics";
 
 const CLIPARTS = [
   { id: "hex",          label: "Hex",         svg: hexSvg,         viewBox: "299 276 111 111" },
@@ -69,6 +71,34 @@ const DEFAULT_FORMAT: TextFormat = { autoSize: true, hAlign: "center", vAlign: "
 // multiplication sign to a plain lowercase 'x' at the input boundary.
 const sanitizeLabelText = (s: string): string => s.replace(/[\u00d7]/g, "x");
 
+/** Largest manual size that still fits the given line box (measured, = STL auto). */
+function useFitMax(text: string, box: { w: number; h: number }): number | null {
+  const [fit, setFit] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const trimmed = text.trim();
+    if (!trimmed) {
+      setFit(null);
+      return;
+    }
+    const w = box.w;
+    const h = box.h;
+    (async () => {
+      let v: number;
+      try {
+        v = await maxFittingSize(trimmed, w, h);
+      } catch {
+        v = Math.max(1.2, Math.min(h, (w * 1.7) / (trimmed.length || 1)));
+      }
+      if (alive) setFit(v);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [text, box.w, box.h]);
+  return fit;
+}
+
 interface LabelFormProps {
   onGenerate: (input: LabelInput) => Promise<void>;
   onPreviewChange?: (label: LabelInput) => void;
@@ -101,6 +131,14 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
     }
     saveCustomIcons(customIcons);
   }, [customIcons]);
+
+  // Effective boxes + measured manual-size caps for the text lines.
+  const hasIcon = selectedClipart !== null;
+  const hasLine1 = line1.trim().length > 0;
+  const hasLine2 = line2Enabled && (line2.trim().length > 0 || (line2Mode === "image" && !!selectedLine2Image));
+  const fitBoxes = resolveLineBoxes(labelWidth, hasIcon, hasLine1, hasLine2);
+  const line1Max = useFitMax(line1, fitBoxes.line1);
+  const line2Max = useFitMax(line2, fitBoxes.line2);
 
   // Custom icons merged after the built-in cliparts for lookup/selection.
   const allCliparts = [
@@ -203,7 +241,7 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
         Line 1
         <input value={line1} onChange={(e) => setLine1(sanitizeLabelText(e.target.value))} required />
       </label>
-      <TextFormatControls label="Line 1 format" format={line1Format} onChange={setLine1Format} />
+      <TextFormatControls label="Line 1 format" format={line1Format} onChange={setLine1Format} maxSize={line1Max ?? undefined} />
 
       <div className="line2-field">
         <div className="line2-label-row">
@@ -237,7 +275,7 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
         {line2Enabled && (line2Mode === "text" ? (
           <>
             <input value={line2} onChange={(e) => setLine2(sanitizeLabelText(e.target.value))} />
-            <TextFormatControls label="Line 2 format" format={line2Format} onChange={setLine2Format} />
+            <TextFormatControls label="Line 2 format" format={line2Format} onChange={setLine2Format} maxSize={line2Max ?? undefined} />
           </>
         ) : (
           <div className="symbol-picker">

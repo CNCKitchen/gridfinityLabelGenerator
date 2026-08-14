@@ -1,5 +1,14 @@
+import { useEffect, useMemo, useState } from "react";
 import type { LabelInput, TextFormat } from "../types/label";
-import { clampManualSize, DEFAULT_TEXT_FORMAT, labelExtraWidth, labelPhysicalWidth } from "../services/geometry";
+import {
+  clampManualSize,
+  DEFAULT_TEXT_FORMAT,
+  labelExtraWidth,
+  labelPhysicalWidth,
+  resolveLineBoxes,
+  type Box2,
+} from "../services/geometry";
+import { maxFittingSize, measureTextBounds, textToSvgPath } from "../services/textMetrics";
 
 // Label DXF paths extracted from label.svg (Inkscape DXF export, 96 dpi).
 // LABEL_TRANSFORM maps local px → overlay mm (0..37.8 × 0..11.5):
@@ -16,30 +25,15 @@ const LABEL_H = 11.5;
 // This viewBox crops to the actual screw path area, matching the line-2 box AR (~5:1).
 const SCREW_SVG_VIEWBOX = "32.4 18.7 80.2 16";
 
-// Base (1×) boxes. Text boxes widen by labelExtraWidth for 2×/3× labels.
 const ICON_BOX = { x: 3.0, y: 1.0, w: 9.5, h: 9.5 };
-const LINE1_BOX_BASE = { x: 13.5, y: 1.0, w: 21.3, h: 4.25 };
-const LINE2_BOX_BASE = { x: 13.5, y: 6.25, w: 21.3, h: 4.25 };
-const FULL_LINE1_BOX_BASE = { x: 3.0, y: 1.0, w: 31.8, h: 4.25 };
-const FULL_LINE2_BOX_BASE = { x: 3.0, y: 6.25, w: 31.8, h: 4.25 };
-const SINGLE_LINE_BOX_BASE = { x: 13.5, y: 1.0, w: 21.3, h: 9.5 };
-const FULL_SINGLE_LINE_BOX_BASE = { x: 3.0, y: 1.0, w: 31.8, h: 9.5 };
 
 const FONT = "Arial, 'Helvetica Neue', Helvetica, sans-serif";
 const ICON_GAP = 0.4; // mm between TX and number halves — keeps them visually tight
 
+// Fallback used only until the measured font size resolves (brief flash).
 function fittingFontSize(text: string, maxW: number, maxH: number): number {
   const len = text.length || 1;
   return Math.min((maxW * 1.7) / len, maxH);
-}
-
-interface Box { x: number; y: number; w: number; h: number }
-
-/** Effective per-line font size: auto-fit unless a manual size is set (then clamped to the box). */
-function effectiveFontSize(text: string, box: Box, format?: TextFormat): number {
-  const auto = fittingFontSize(text, box.w, box.h);
-  if (!format || format.autoSize !== false) return auto;
-  return clampManualSize(format.fontSize ?? auto, 1.2, auto);
 }
 
 interface LabelPreviewProps {
@@ -51,22 +45,19 @@ export function LabelPreview({ label }: LabelPreviewProps) {
   const extraW = labelExtraWidth(labelWidth);
   const labelW = labelPhysicalWidth(labelWidth);
 
-  // Widen every text box (not the icon box) so 2×/3× labels get more text room.
-  // (lower-case on purpose: these are per-render derived boxes, not module consts)
-  const widen = (b: Box): Box => ({ ...b, w: b.w + extraW });
-  const line1Box = widen(LINE1_BOX_BASE);
-  const line2Box = widen(LINE2_BOX_BASE);
-  const fullLine1Box = widen(FULL_LINE1_BOX_BASE);
-  const fullLine2Box = widen(FULL_LINE2_BOX_BASE);
-  const singleLineBox = widen(SINGLE_LINE_BOX_BASE);
-  const fullSingleLineBox = widen(FULL_SINGLE_LINE_BOX_BASE);
+  // Resolve the effective boxes + sizes for the two text lines.
+  const hasIcon = !!(label?.iconSvg || label?.iconText);
+  const hasLine1 = !!label?.line1?.trim();
+  const line2Enabled = label ? label.line2Enabled !== false : true;
+  const hasLine2 = line2Enabled && !!(label && (label.line2Svg || label.line2.trim()));
+  const boxes = resolveLineBoxes(labelWidth, hasIcon, hasLine1, hasLine2);
+  const line1Size = useResolvedTextSize(label?.line1, boxes.line1, label?.line1Format);
+  const line2Size = useResolvedTextSize(label?.line2, boxes.line2, label?.line2Format);
 
   // Outer viewBox adds 1mm margin on all sides so the label outline stroke isn't clipped
   const VB_MARGIN = 1;
   const VB = `${-VB_MARGIN} ${-VB_MARGIN} ${labelW + VB_MARGIN * 2} ${LABEL_H + VB_MARGIN * 2}`;
 
-  const line2Enabled = label ? label.line2Enabled !== false : true;
-  const hasLine2 = line2Enabled && !!(label?.line2Svg || label?.line2?.trim());
   // Stretch factor for the fixed body outline: the whole DXF outline is scaled about
   // the left edge, so on 2×/3× the outline is an approximation (the real STL keeps
   // the left half unscaled and extends only the right half). Icon/text boxes are
@@ -179,63 +170,24 @@ export function LabelPreview({ label }: LabelPreviewProps) {
     return null;
   }
 
-  /** One justified text line honouring the 3×3 alignment grid within `box`. */
-  function renderTextLine(text: string, box: Box, format?: TextFormat) {
-    const fs = effectiveFontSize(text, box, format);
-    const fmt = format ?? DEFAULT_TEXT_FORMAT;
-
-    const hAnchor = fmt.hAlign === "left" ? "start" : fmt.hAlign === "right" ? "end" : "middle";
-    const x =
-      fmt.hAlign === "left" ? box.x : fmt.hAlign === "right" ? box.x + box.w : box.x + box.w / 2;
-    // SVG Y grows downward: top → text-before-edge at box.y, bottom → text-after-edge at box.y+h.
-    const baseline =
-      fmt.vAlign === "top" ? "text-before-edge" : fmt.vAlign === "bottom" ? "text-after-edge" : "central";
-    const y =
-      fmt.vAlign === "top" ? box.y : fmt.vAlign === "bottom" ? box.y + box.h : box.y + box.h / 2;
-
-    return (
-      <text
-        x={x}
-        y={y}
-        textAnchor={hAnchor}
-        dominantBaseline={baseline}
-        fontSize={fs}
-        fill="#e2e8f0"
-        fontWeight="bold"
-        fontFamily={FONT}
-      >
-        {text}
-      </text>
-    );
-  }
-
   function renderLine1() {
-    if (!label?.line1) return null;
-    const hasIcon = !!(label.iconSvg || label.iconText);
-    const isOnlyLine = !hasLine2;
-    const box = isOnlyLine ? (hasIcon ? singleLineBox : fullSingleLineBox) : hasIcon ? line1Box : fullLine1Box;
-    return renderTextLine(label.line1, box, label.line1Format);
+    if (!label?.line1 || line1Size == null) return null; // wait for the measured size/font
+    return <TextGlyph key={`l1|${label.line1}|${line1Size}`} text={label.line1} box={boxes.line1} format={label.line1Format ?? DEFAULT_TEXT_FORMAT} size={line1Size} />;
   }
 
   function renderLine2() {
     if (!label) return null;
     if (!hasLine2) return null;
-    const hasIcon = !!(label.iconSvg || label.iconText);
-    const isOnlyLine = !label.line1;
-
     if (label.line2Svg) {
-      const svgBox = isOnlyLine
-        ? hasIcon ? singleLineBox : fullSingleLineBox
-        : hasIcon ? line2Box : fullLine2Box;
-      const vb = label.line2ViewBox ?? SCREW_SVG_VIEWBOX;
       const encoded = encodeURIComponent(label.line2Svg);
+      const box = boxes.line2;
       return (
         <svg
-          x={svgBox.x}
-          y={svgBox.y}
-          width={svgBox.w}
-          height={svgBox.h}
-          viewBox={vb}
+          x={box.x}
+          y={box.y}
+          width={box.w}
+          height={box.h}
+          viewBox={label.line2ViewBox ?? SCREW_SVG_VIEWBOX}
           preserveAspectRatio="xMidYMid meet"
         >
           <defs>
@@ -254,12 +206,8 @@ export function LabelPreview({ label }: LabelPreviewProps) {
         </svg>
       );
     }
-
-    if (!label.line2) return null;
-    const box = isOnlyLine
-      ? hasIcon ? singleLineBox : fullSingleLineBox
-      : hasIcon ? line2Box : fullLine2Box;
-    return renderTextLine(label.line2, box, label.line2Format);
+    if (!label.line2 || line2Size == null) return null;
+    return <TextGlyph key={`l2|${label.line2}|${line2Size}`} text={label.line2} box={boxes.line2} format={label.line2Format ?? DEFAULT_TEXT_FORMAT} size={line2Size} />;
   }
 
   return (
@@ -275,4 +223,87 @@ export function LabelPreview({ label }: LabelPreviewProps) {
       {renderLine2()}
     </svg>
   );
+}
+
+/**
+ * Resolves the effective font size for one line: the biggest size whose measured
+ * ink box fits the box (== the STL auto-size), or the manual size clamped to that
+ * same limit. Computed asynchronously via the shared typeface metrics.
+ */
+function useResolvedTextSize(
+  text: string | undefined,
+  box: Box2,
+  format: TextFormat | undefined
+): number | null {
+  const [size, setSize] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const trimmed = (text ?? "").trim();
+    if (!trimmed) {
+      setSize(null);
+      return;
+    }
+    const w = box.w;
+    const h = box.h;
+    (async () => {
+      let auto: number;
+      try {
+        auto = await maxFittingSize(trimmed, w, h);
+      } catch {
+        auto = fittingFontSize(trimmed, w, h);
+      }
+      if (!alive) return;
+      if (!format || format.autoSize !== false) {
+        setSize(auto);
+      } else {
+        setSize(clampManualSize(format.fontSize ?? auto, 1.2, auto));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [text, box.w, box.h, format?.autoSize, format?.fontSize]);
+  return size;
+}
+
+/**
+ * Renders a text line as an SVG <path> filled from the actual helvetiker glyph
+ * outlines (same font + tracking as the STL) and aligns it within `box` by its
+ * measured ink box for both axes — so the preview is an exact mirror of the STL:
+ * same width that fills the box, and vertical centring by ink (not em baseline).
+ * A `key` remounts it when text/size change so the path/alignment are fresh.
+ */
+function TextGlyph({
+  text,
+  box,
+  format,
+  size,
+}: {
+  text: string;
+  box: Box2;
+  format: TextFormat;
+  size: number;
+}) {
+  const d = useMemo(() => textToSvgPath(text, size), [text, size]);
+  const ink = useMemo(() => measureTextBounds(text, size), [text, size]);
+
+  let transform = "";
+  if (ink) {
+    // ink is in y-up units; convert to SVG (y-down): content top = -(y+height).
+    const inkTop = -(ink.y + ink.height);
+    const inkCenterY = -(ink.y) - ink.height / 2;
+    let dx: number;
+    if (format.hAlign === "left") dx = box.x - ink.x;
+    else if (format.hAlign === "right") dx = box.x + box.w - (ink.x + ink.width);
+    else dx = box.x + box.w / 2 - (ink.x + ink.width / 2);
+
+    let dy: number;
+    if (format.vAlign === "top") dy = box.y - inkTop;
+    else if (format.vAlign === "bottom") dy = box.y + box.h - (inkTop + ink.height);
+    else dy = box.y + box.h / 2 - inkCenterY;
+
+    transform = `translate(${dx} ${dy})`;
+  }
+
+  return <path d={d} transform={transform} fill="#e2e8f0" fillRule="evenodd" />;
 }

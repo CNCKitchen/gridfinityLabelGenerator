@@ -23,6 +23,11 @@ function loadFont(): Promise<Font> {
       .then((data) => {
         font = new FontLoader().parse(data);
         return font;
+      })
+      // Don't cache a failure for the whole session — allow a later retry.
+      .catch((e) => {
+        _fontPromise = null;
+        throw e;
       });
   }
   return _fontPromise;
@@ -103,25 +108,6 @@ export function measureTextBounds(
     width: b.max.x - b.min.x,
     height: b.max.y - b.min.y,
   };
-}
-
-/**
- * Largest font size (≥1.2, in 0.1 steps) whose measured ink box fits inside the
- * given box. This is the "auto" size — and therefore also the manual-size clamp
- * limit — and matches exactly what the STL exporter resolves.
- */
-export async function maxFittingSize(text: string, maxW: number, maxH: number): Promise<number> {
-  await loadFont();
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-  let size = Math.max(6, maxH * 1.4);
-  const minSize = 1.2;
-  while (size > minSize) {
-    const b = measureTextBounds(trimmed, size);
-    if (b && b.width <= maxW && b.height <= maxH) return size;
-    size -= 0.1;
-  }
-  return minSize;
 }
 
 // ---------------------------------------------------------------------------

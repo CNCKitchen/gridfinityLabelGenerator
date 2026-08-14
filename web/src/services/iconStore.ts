@@ -62,6 +62,9 @@ function measureContentBox(svgString: string): { x: number; y: number; w: number
  */
 export function normalizeImportedSvg(svgString: string): { svg: string; viewBox: string } {
   const doc = new DOMParser().parseFromString(svgString, "image/svg+xml");
+  if (doc.getElementsByTagName("parsererror").length > 0) {
+    throw new Error("Invalid SVG markup");
+  }
   const root = doc.documentElement;
 
   const { x: bx, y: by, w: bw, h: bh } = measureContentBox(svgString);
@@ -93,9 +96,10 @@ export function normalizeImportedSvg(svgString: string): { svg: string; viewBox:
   wrap.appendChild(group);
 
   const svg = new XMLSerializer().serializeToString(wrap);
-  // Crop the A4 canvas to the (centred) content box, with modest breathing room.
-  const m = Math.max(bw, bh) * 0.03 * scale;
-  const viewBox = `${(tx - m).toFixed(2)} ${(ty - m).toFixed(2)} ${(gW + m * 2).toFixed(2)} ${(gH + m * 2).toFixed(2)}`;
+  // Crop the A4 canvas exactly to the centred content box. No breathing room:
+  // the STL exporter fits the pure path geometry, so an extra margin here would
+  // make the preview render imported icons slightly smaller than the emboss.
+  const viewBox = `${tx.toFixed(2)} ${ty.toFixed(2)} ${gW.toFixed(2)} ${gH.toFixed(2)}`;
   return { svg, viewBox };
 }
 

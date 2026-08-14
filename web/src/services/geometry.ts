@@ -85,12 +85,17 @@ export interface Box2 {
   h: number;
 }
 
-const ICON_AREA_X = 3.0; // left edge of the (large) symbol/icon row
-const TEXT_ICON_GAP = 1.0; // gap between the icon row and the text lines
-const TEXT_RIGHT_EDGE = 34.8; // right edge all text boxes share (37.8 - right margin)
+// Canonical horizontal text-box geometry, defined once in SVG-mm (the preview
+// coordinate space). The STL exporter derives its own (world) boxes from these
+// by subtracting its 1.5 mm origin offset — see labelGenerator.buildTextMeshes.
+// Keeping a single source avoids preview≠STL drift in fitted text size.
+export const ICON_AREA_X_SVG = 3.0; // left edge of the (large) symbol/icon row
+export const TEXT_ICON_GAP = 1.0; // gap between the icon row and the text lines
+export const TEXT_RIGHT_EDGE_SVG = 34.8; // right edge all text boxes share (37.8 - margin)
 
-function widenBox(b: Box2, extra: number): Box2 {
-  return { ...b, w: b.w + extra }; // label grows to the right; icon column stays fixed
+/** Left edge (SVG-mm) of the text lines given the left icon-row width. */
+export function textLineStartSvg(iconRowWidth: number): number {
+  return iconRowWidth > 0 ? ICON_AREA_X_SVG + iconRowWidth + TEXT_ICON_GAP : ICON_AREA_X_SVG;
 }
 
 /**
@@ -107,9 +112,9 @@ export function resolveLineBoxes(
   hasLine2: boolean
 ): { line1: Box2; line2: Box2 } {
   const extra = labelExtraWidth(labelWidth);
-  const startX = iconRowWidth > 0 ? ICON_AREA_X + iconRowWidth + TEXT_ICON_GAP : ICON_AREA_X;
-  const width = TEXT_RIGHT_EDGE - startX + extra;
-  const box = (y: number, h: number): Box2 => widenBox({ x: startX, y, w: width, h }, 0);
+  const startX = textLineStartSvg(iconRowWidth);
+  const width = TEXT_RIGHT_EDGE_SVG - startX + extra;
+  const box = (y: number, h: number): Box2 => ({ x: startX, y, w: width, h });
   const line1 = !hasLine2 ? box(1.0, 9.5) : box(1.0, 4.25);
   const line2 = !hasLine1 ? box(1.0, 9.5) : box(6.25, 4.25);
   return { line1, line2 };

@@ -3,14 +3,12 @@ import type { CustomIconMeta, ImageAsset, LabelInput, TextFormat } from "../type
 
 import { TextFormatControls } from "./TextFormatControls";
 import { buildCustomIcon, loadCustomIcons, removeCustomIcon, saveCustomIcons } from "../services/iconStore";
-import { resolveLineBoxes } from "../services/geometry";
-import { layoutComposed, maxFittingSizeComposed, parseLineTemplate, type LineToken } from "../services/textMetrics";
+import { DEFAULT_TEXT_FORMAT, resolveLineBoxes } from "../services/geometry";
+import { ensureTextFont, layoutComposed, maxFittingSizeComposed, parseLineTemplate, type LineToken } from "../services/textMetrics";
 import { BUILTIN_IMAGES, CLIPART_IMAGES, SCREW_IMAGES } from "../services/imageRegistry";
 
 /** Height (mm) of the large left icon/symbol row — must match the preview. */
 const SYMBOL_ICON_H = 9.5;
-
-const DEFAULT_FORMAT: TextFormat = { autoSize: true, hAlign: "center", vAlign: "center" };
 
 const LINE1_DEFAULT = "M3 ${Cylinder Head}";
 const LINE2_DEFAULT = "x6   x8   x10";
@@ -97,27 +95,27 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
   const [line2, setLine2] = useState(LINE2_DEFAULT);
   const [labelWidth, setLabelWidth] = useState<1 | 2 | 3>(1);
   const [line2Enabled, setLine2Enabled] = useState(true);
-  const [line1Format, setLine1Format] = useState<TextFormat>(DEFAULT_FORMAT);
-  const [line2Format, setLine2Format] = useState<TextFormat>(DEFAULT_FORMAT);
+  const [line1Format, setLine1Format] = useState<TextFormat>(DEFAULT_TEXT_FORMAT);
+  const [line2Format, setLine2Format] = useState<TextFormat>(DEFAULT_TEXT_FORMAT);
   const [customIcons, setCustomIcons] = useState<CustomIconMeta[]>(() => loadCustomIcons());
   const [importError, setImportError] = useState("");
   const [loading, setLoading] = useState(false);
   const [copiedHint, setCopiedHint] = useState<string | null>(null);
+  const [fontReady, setFontReady] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const copyTimer = useRef<number | null>(null);
 
-  // Persist custom icons whenever they change (central place — keeps state
-  // updaters pure). The first render is skipped so we never overwrite the stored
-  // icons with the already-populated initial state.
-  const isFirstRender = useRef(true);
+  // Font-readiness lifts the helped icon-row width from measured text metrics,
+  // so the Symbol row is laid out against real glyph widths, not pre-load guesses.
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    saveCustomIcons(customIcons);
-  }, [customIcons]);
+    let alive = true;
+    void ensureTextFont().then(() => { if (alive) setFontReady(true); });
+    return () => { alive = false; };
+  }, []);
 
+  // Custom icons are persisted (to localStorage) directly at the two mutation
+  // points — import and remove — rather than via a mount effect, which keeps the
+  // stored data in sync without the StrictMode first-render dance.
   useEffect(() => () => { if (copyTimer.current) window.clearTimeout(copyTimer.current); }, []);
 
   // Registry of every embeddable image: imported icons first (so a same-named
@@ -142,7 +140,7 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
   const hasSymbol = symbol.trim().length > 0;
   const iconRowWidth = useMemo(
     () => (hasSymbol ? layoutComposed(symbolTokens, SYMBOL_ICON_H, registry).totalWidth : 0),
-    [symbolTokens, symbol, registry]
+    [symbolTokens, hasSymbol, registry, fontReady]
   );
   const hasLine1 = line1.trim().length > 0;
   const hasLine2 = line2Enabled && (line2.trim().length > 0);
@@ -210,14 +208,18 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
       }
       const name = file.name.replace(/\.svg$/i, "").replace(/[_-]+/g, " ");
       const meta = buildCustomIcon(text, name);
-      setCustomIcons((cur) => [...cur, meta]);
+      const next = [...customIcons, meta];
+      setCustomIcons(next);
+      saveCustomIcons(next);
     } catch {
       setImportError("Could not read the SVG file.");
     }
   };
 
   const handleRemoveIcon = (id: string) => {
-    setCustomIcons((cur) => removeCustomIcon(cur, id));
+    const next = removeCustomIcon(customIcons, id);
+    setCustomIcons(next);
+    saveCustomIcons(next);
   };
 
   const handleCopyIcon = (name: string) => {

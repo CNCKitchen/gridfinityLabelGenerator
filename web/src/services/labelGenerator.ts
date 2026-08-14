@@ -5,7 +5,6 @@ import {
   Mesh,
   MeshNormalMaterial,
   Shape,
-  ShapeGeometry,
   type BufferGeometry,
 } from "three";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
@@ -17,6 +16,9 @@ import {
   DEFAULT_TEXT_FORMAT,
   extendRectRight,
   hAlignOffset,
+  ICON_AREA_X_SVG,
+  TEXT_RIGHT_EDGE_SVG,
+  textLineStartSvg,
   vAlignOffset,
 } from "./geometry";
 import { BUILTIN_IMAGES } from "./imageRegistry";
@@ -25,19 +27,20 @@ import {
   generateShapesWithTracking,
   layoutComposed,
   maxFittingSizeComposed,
+  measureTextBounds,
   parseLineTemplate,
   type LineToken,
 } from "./textMetrics";
 
 const EMBOSS_HEIGHT = 0.4;
 
-// The large symbol/icon row on the far left. Its width is dynamic (from the
-// symbol template); the text lines shift right by it. 1.5 is the local x origin
-// (== CONTENT_ORIGIN_X offset); right edge of all text boxes is 34.5.
 const ICON_AREA_HEIGHT = 9.5;
-const ICON_AREA_X = 1.5;
-const TEXT_RIGHT_EDGE = 34.5;
 const LEGACY_ICON_WIDTH = 9.5;
+// The STL exports in world/local coordinates whose origin sits 1.5 mm left of
+// the SVG/geometry space (CONTENT_ORIGIN_X = base.min.x + 1.5). The text-box
+// coordinates are derived from the shared SVG constants in geometry.ts by
+// subtracting this offset, so the exported boxes match the preview exactly.
+const STL_SVG_ORIGIN = 1.5;
 
 const SVG_BOX = { x1: 1.5, y1: 0.5, x2: 11, y2: 10 };
 
@@ -55,11 +58,9 @@ let topZ: number;
 let CONTENT_ORIGIN_X: number;
 let CONTENT_ORIGIN_Y: number;
 
-// Per-call offset: shifts content right to centre it on wider labels.
-// With width-scaled text boxes (extendRectRight) this stays 0; the extra space
-// belongs to the text areas, not to symmetric centring.
-let contentXOffset = 0;
-// Extra width added for the current 2×/3× request, used to grow the text boxes.
+// Per-request width for 2×/3× labels, used to grow the text boxes. These module
+// globals are NOT concurrency-safe by design: generateLabelStl must never run
+// in parallel (the batch exporter awaits sequentially). Keep single-threaded.
 let currentExtraWidth = 0;
 
 function ensureInitialized(): Promise<void> {
@@ -97,16 +98,6 @@ function toExtrudedMesh(shapes: Shape[], depth: number): Mesh {
   return new Mesh(geometry, material);
 }
 
-function getTextBounds(text: string, size: number): Box3 | null {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  const shapes = generateShapesWithTracking(trimmed, size);
-  if (shapes.length === 0) return null;
-  const geometry = new ShapeGeometry(shapes);
-  geometry.computeBoundingBox();
-  return geometry.boundingBox;
-}
-
 function getMeshBounds(mesh: Mesh): Box3 {
   mesh.updateMatrixWorld(true);
   return new Box3().setFromObject(mesh);
@@ -118,9 +109,9 @@ function getBoxSize(box: Rect): { width: number; height: number } {
 
 function toWorldBox(box: Rect): Rect {
   return {
-    x1: CONTENT_ORIGIN_X + contentXOffset + box.x1,
+    x1: CONTENT_ORIGIN_X + box.x1,
     y1: CONTENT_ORIGIN_Y + box.y1,
-    x2: CONTENT_ORIGIN_X + contentXOffset + box.x2,
+    x2: CONTENT_ORIGIN_X + box.x2,
     y2: CONTENT_ORIGIN_Y + box.y2,
   };
 }
@@ -244,9 +235,9 @@ function chooseTextSizeForBox(text: string, maxWidth: number, maxHeight: number)
   let size = Math.max(6, maxHeight * 1.4);
   const minSize = 1.2;
   while (size > minSize) {
-    const bounds = getTextBounds(text, size);
-    const width = bounds ? bounds.max.x - bounds.min.x : 0;
-    const height = bounds ? bounds.max.y - bounds.min.y : 0;
+    const b = measureTextBounds(text, size);
+    const width = b ? b.width : 0;
+    const height = b ? b.height : 0;
     if (width <= maxWidth && height <= maxHeight) return size;
     size -= 0.1;
   }
@@ -292,7 +283,7 @@ function createTextLineMesh(
   const vOff = vAlignOffset(format.vAlign, height, scaledHeight, true);
   const tx = x + hOff - bounds.min.x * scale;
   const ty = y + vOff - bounds.min.y * scale;
-  mesh.position.set(tx, ty, topZ - 0.4);
+  mesh.position.set(tx, ty, topZ - EMBOSS_HEIGHT);
   return mesh;
 }
 
@@ -354,7 +345,7 @@ function buildComposedLineGroup(
   const group = new Group();
   group.position.set(box.x1 + hOff, box.y1 + vOff, 0);
 
-  const z = topZ - 0.4; // content sits on the label surface (top at topZ)
+  const z = topZ - EMBOSS_HEIGHT; // content sits on the label surface (top at topZ)
   const centerY = layout.contentHeight / 2;
   let cursor = 0;
   for (const t of layout.tokens) {
@@ -397,9 +388,9 @@ function buildIconRowMeshes(label: LabelInput, registry: ImageAsset[]): (Mesh | 
     const width = layoutComposed(tokens, ICON_AREA_HEIGHT, registry).totalWidth;
     if (width <= 0) return [];
     const box: Rect = {
-      x1: CONTENT_ORIGIN_X + ICON_AREA_X,
+      x1: CONTENT_ORIGIN_X + (ICON_AREA_X_SVG - STL_SVG_ORIGIN),
       y1: CONTENT_ORIGIN_Y + 0.5,
-      x2: CONTENT_ORIGIN_X + ICON_AREA_X + width,
+      x2: CONTENT_ORIGIN_X + (ICON_AREA_X_SVG - STL_SVG_ORIGIN) + width,
       y2: CONTENT_ORIGIN_Y + 0.5 + ICON_AREA_HEIGHT,
     };
     const g = buildComposedLineGroup(tokens, ICON_AREA_HEIGHT, box, { autoSize: true, hAlign: "left", vAlign: "center" }, registry);
@@ -418,8 +409,10 @@ async function buildTextMeshes(label: LabelInput, registry: ImageAsset[]): Promi
   const line2Enabled = label.line2Enabled !== false;
   const hasLine2 = line2Enabled && (!!label.line2Svg || !!label.line2.trim());
 
-  const left = ICON_AREA_X + iconW;
-  const right = TEXT_RIGHT_EDGE;
+  // Text boxes are the shared SVG geometry (geometry.resolveLineBoxes) shifted
+  // into the STL origin space, so the export matches the preview exactly.
+  const left = textLineStartSvg(iconW) - STL_SVG_ORIGIN;
+  const right = TEXT_RIGHT_EDGE_SVG - STL_SVG_ORIGIN;
 
   // The only present line gets the label's full height. Boxes are widened by
   // currentExtraWidth so 2×/3× labels get genuinely more text room.
@@ -476,7 +469,6 @@ export async function generateLabelStl(label: LabelInput): Promise<ArrayBuffer> 
   // Width-scaled text boxes carry the extra room; content is left-anchored
   // (icon at far left) instead of centred into a fixed-size block.
   currentExtraWidth = extraWidth;
-  contentXOffset = 0;
 
   const baseMesh = cloneBaseMesh();
   if (extraWidth > 0) widenGeometry(baseMesh.geometry, extraWidth);

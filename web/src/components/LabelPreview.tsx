@@ -12,6 +12,7 @@ import {
 } from "../services/geometry";
 import { BUILTIN_IMAGES } from "../services/imageRegistry";
 import {
+  ensureTextFont,
   layoutComposed,
   maxFittingSizeComposed,
   parseLineTemplate,
@@ -60,11 +61,22 @@ export function LabelPreview({ label }: LabelPreviewProps) {
   const symbolTokens = useMemo(() => (label?.symbol ? parseLineTemplate(label.symbol) : []), [label?.symbol]);
   const hasSymbol = !!(label?.symbol && label.symbol.trim());
 
+  // The icon-row width for a text-bearing symbol depends on measured glyphs, so
+  // recompute it once the font is ready (the sync memo is stale before that).
+  const [fontReady, setFontReady] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    ensureTextFont().then(() => alive && setFontReady(true)).catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // Effective boxes + sizes. The left icon-row width shifts the text boxes.
   const iconRowWidth = useMemo(() => {
     if (label?.symbol && label.symbol.trim()) return layoutComposed(symbolTokens, ICON_AREA_H, registry).totalWidth;
     return hasLegacyIcon ? LEGACY_ICON_WIDTH : 0;
-  }, [symbolTokens, registry, label?.symbol, hasLegacyIcon]);
+  }, [symbolTokens, registry, label?.symbol, hasLegacyIcon, fontReady]);
 
   const hasLine1 = !!label?.line1?.trim();
   const line2Enabled = label ? label.line2Enabled !== false : true;
@@ -292,8 +304,9 @@ function useResolvedComposedSize(
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tokens, box.w, box.h, format?.autoSize, format?.fontSize, regKey, registry]);
+    // regKey (stable, content-derived) rather than the registry reference: custom
+    // icons are immutable, so a new id always signals changed geometry.
+  }, [tokens, box.w, box.h, format?.autoSize, format?.fontSize, regKey]);
   return size;
 }
 

@@ -378,7 +378,10 @@ function buildComposedLineGroup(
         // Centre the image box on the line; the fit-in-box keeps its aspect.
         mesh.position.x += cursor;
         mesh.position.y += centerY - t.height / 2;
-        mesh.position.z = z;
+        // Icons (SVG, geometry flipped by rotateX) sit at the surface top exactly
+        // like the legacy icon box: z = topZ. Text (helvetiker shapes) uses
+        // topZ - EMBOSS_HEIGHT. Mixing z here sinks icons below the print face.
+        mesh.position.z = topZ;
         group.add(mesh);
       }
     }

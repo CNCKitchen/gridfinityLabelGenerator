@@ -1,14 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
-import type { LabelInput, TextFormat } from "../types/label";
+import type { ImageAsset, LabelInput, TextFormat } from "../types/label";
 import {
   clampManualSize,
   DEFAULT_TEXT_FORMAT,
+  hAlignOffset,
   labelExtraWidth,
   labelPhysicalWidth,
   resolveLineBoxes,
+  vAlignOffset,
   type Box2,
 } from "../services/geometry";
-import { maxFittingSize, measureTextBounds, textToSvgPath } from "../services/textMetrics";
+import { BUILTIN_IMAGES } from "../services/imageRegistry";
+import {
+  INLINE_GAP,
+  layoutComposed,
+  maxFittingSizeComposed,
+  parseLineTemplate,
+  textToSvgPath,
+  type LineToken,
+} from "../services/textMetrics";
 
 // Label DXF paths extracted from label.svg (Inkscape DXF export, 96 dpi).
 // LABEL_TRANSFORM maps local px → overlay mm (0..37.8 × 0..11.5):
@@ -31,9 +41,9 @@ const FONT = "Arial, 'Helvetica Neue', Helvetica, sans-serif";
 const ICON_GAP = 0.4; // mm between TX and number halves — keeps them visually tight
 
 // Fallback used only until the measured font size resolves (brief flash).
-function fittingFontSize(text: string, maxW: number, maxH: number): number {
-  const len = text.length || 1;
-  return Math.min((maxW * 1.7) / len, maxH);
+function fittingFontSize(tokens: LineToken[], maxW: number, maxH: number): number {
+  const chars = tokens.reduce((n, t) => n + (t.type === "text" ? t.text.length : 4), 0) || 1;
+  return Math.max(1.2, Math.min((maxW * 1.7) / chars, maxH));
 }
 
 interface LabelPreviewProps {
@@ -51,8 +61,11 @@ export function LabelPreview({ label }: LabelPreviewProps) {
   const line2Enabled = label ? label.line2Enabled !== false : true;
   const hasLine2 = line2Enabled && !!(label && (label.line2Svg || label.line2.trim()));
   const boxes = resolveLineBoxes(labelWidth, hasIcon, hasLine1, hasLine2);
-  const line1Size = useResolvedTextSize(label?.line1, boxes.line1, label?.line1Format);
-  const line2Size = useResolvedTextSize(label?.line2, boxes.line2, label?.line2Format);
+  const registry = label?.icons ?? BUILTIN_IMAGES;
+  const line1Tokens = useMemo(() => parseLineTemplate(label?.line1 ?? ""), [label?.line1]);
+  const line2Tokens = useMemo(() => parseLineTemplate(label?.line2 ?? ""), [label?.line2]);
+  const line1Size = useResolvedComposedSize(line1Tokens, boxes.line1, label?.line1Format, registry);
+  const line2Size = useResolvedComposedSize(line2Tokens, boxes.line2, label?.line2Format, registry);
 
   // Outer viewBox adds 1mm margin on all sides so the label outline stroke isn't clipped
   const VB_MARGIN = 1;
@@ -172,7 +185,7 @@ export function LabelPreview({ label }: LabelPreviewProps) {
 
   function renderLine1() {
     if (!label?.line1 || line1Size == null) return null; // wait for the measured size/font
-    return <TextGlyph key={`l1|${label.line1}|${line1Size}`} text={label.line1} box={boxes.line1} format={label.line1Format ?? DEFAULT_TEXT_FORMAT} size={line1Size} />;
+    return renderComposedLine(line1Tokens, boxes.line1, label.line1Format, line1Size, registry);
   }
 
   function renderLine2() {
@@ -207,7 +220,7 @@ export function LabelPreview({ label }: LabelPreviewProps) {
       );
     }
     if (!label.line2 || line2Size == null) return null;
-    return <TextGlyph key={`l2|${label.line2}|${line2Size}`} text={label.line2} box={boxes.line2} format={label.line2Format ?? DEFAULT_TEXT_FORMAT} size={line2Size} />;
+    return renderComposedLine(line2Tokens, boxes.line2, label.line2Format, line2Size, registry);
   }
 
   return (
@@ -226,20 +239,24 @@ export function LabelPreview({ label }: LabelPreviewProps) {
 }
 
 /**
- * Resolves the effective font size for one line: the biggest size whose measured
- * ink box fits the box (== the STL auto-size), or the manual size clamped to that
- * same limit. Computed asynchronously via the shared typeface metrics.
+ * Resolves the effective font size for a (possibly image-bearing) line: the
+ * biggest size whose whole composed chain (text ink + inline images + gaps)
+ * fits the box (== the STL auto-size), or the manual size clamped to that same
+ * limit. Computed asynchronously via the shared typeface metrics.
  */
-function useResolvedTextSize(
-  text: string | undefined,
+function useResolvedComposedSize(
+  tokens: LineToken[],
   box: Box2,
-  format: TextFormat | undefined
+  format: TextFormat | undefined,
+  registry: ImageAsset[]
 ): number | null {
   const [size, setSize] = useState<number | null>(null);
+  // Content-based key so an identical registry (same icons, same order) doesn't
+  // re-trigger the fit even if the array identity changed between renders.
+  const regKey = useMemo(() => registry.map((a) => a.id).join("|"), [registry]);
   useEffect(() => {
     let alive = true;
-    const trimmed = (text ?? "").trim();
-    if (!trimmed) {
+    if (tokens.length === 0) {
       setSize(null);
       return;
     }
@@ -248,9 +265,9 @@ function useResolvedTextSize(
     (async () => {
       let auto: number;
       try {
-        auto = await maxFittingSize(trimmed, w, h);
+        auto = await maxFittingSizeComposed(tokens, w, h, registry);
       } catch {
-        auto = fittingFontSize(trimmed, w, h);
+        auto = fittingFontSize(tokens, w, h);
       }
       if (!alive) return;
       if (!format || format.autoSize !== false) {
@@ -262,48 +279,62 @@ function useResolvedTextSize(
     return () => {
       alive = false;
     };
-  }, [text, box.w, box.h, format?.autoSize, format?.fontSize]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tokens, box.w, box.h, format?.autoSize, format?.fontSize, regKey, registry]);
   return size;
 }
 
 /**
- * Renders a text line as an SVG <path> filled from the actual helvetiker glyph
- * outlines (same font + tracking as the STL) and aligns it within `box` by its
- * measured ink box for both axes — so the preview is an exact mirror of the STL:
- * same width that fills the box, and vertical centring by ink (not em baseline).
- * A `key` remounts it when text/size change so the path/alignment are fresh.
+ * Renders a template line as a row of text glyph paths and inline `${Name}`
+ * images, laid out with the shared textMetrics module so it matches the STL
+ * exactly: same composed width, same cap-height images, same top/ink alignment.
+ * Text runs are drawn from the actual helvetiker outlines; images are fit into
+ * a cap-height box preserving their aspect.
  */
-function TextGlyph({
-  text,
-  box,
-  format,
-  size,
-}: {
-  text: string;
-  box: Box2;
-  format: TextFormat;
-  size: number;
-}) {
-  const d = useMemo(() => textToSvgPath(text, size), [text, size]);
-  const ink = useMemo(() => measureTextBounds(text, size), [text, size]);
+function renderComposedLine(
+  tokens: LineToken[],
+  box: Box2,
+  format: TextFormat | undefined,
+  size: number,
+  registry: ImageAsset[]
+) {
+  const layout = layoutComposed(tokens, size, registry);
+  if (!layout.tokens.length) return null;
+  const fmt = format ?? DEFAULT_TEXT_FORMAT;
+  const dx = hAlignOffset(fmt.hAlign, box.w, layout.totalWidth);
+  const dy = vAlignOffset(fmt.vAlign, box.h, layout.contentHeight, false);
 
-  let transform = "";
-  if (ink) {
-    // ink is in y-up units; convert to SVG (y-down): content top = -(y+height).
-    const inkTop = -(ink.y + ink.height);
-    const inkCenterY = -(ink.y) - ink.height / 2;
-    let dx: number;
-    if (format.hAlign === "left") dx = box.x - ink.x;
-    else if (format.hAlign === "right") dx = box.x + box.w - (ink.x + ink.width);
-    else dx = box.x + box.w / 2 - (ink.x + ink.width / 2);
-
-    let dy: number;
-    if (format.vAlign === "top") dy = box.y - inkTop;
-    else if (format.vAlign === "bottom") dy = box.y + box.h - (inkTop + ink.height);
-    else dy = box.y + box.h / 2 - inkCenterY;
-
-    transform = `translate(${dx} ${dy})`;
+  const children: import("react").ReactNode[] = [];
+  let cursor = 0;
+  for (let i = 0; i < layout.tokens.length; i++) {
+    const t = layout.tokens[i];
+    if (t.type === "text" && t.text && t.ink) {
+      const d = textToSvgPath(t.text, size);
+      // textToSvgPath already flips y (top at -(ink.y+ink.height)); bring that
+      // top edge to the content top (group y=0) by translating up by (ink.y+h).
+      const ty = t.ink.y + t.ink.height;
+      const tx = cursor - t.ink.x; // ink left edge lands exactly at cursor
+      children.push(
+        <path key={i} d={d} transform={`translate(${tx} ${ty})`} fill="#e2e8f0" fillRule="evenodd" />
+      );
+    } else if (t.type === "image" && t.asset) {
+      const vb = t.asset.viewBox || "0 0 100 100";
+      children.push(
+        <svg key={i} x={cursor} y={0} width={t.width} height={t.height} viewBox={vb} preserveAspectRatio="xMidYMid meet">
+          <image
+            href={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(t.asset.svg)}`}
+            x="0"
+            y="0"
+            width="793.70079"
+            height="1122.5197"
+            filter="url(#lp-to-white)"
+          />
+        </svg>
+      );
+    }
+    cursor += t.width;
+    if (i < layout.tokens.length - 1) cursor += INLINE_GAP;
   }
 
-  return <path d={d} transform={transform} fill="#e2e8f0" fillRule="evenodd" />;
+  return <g transform={`translate(${box.x + dx} ${box.y + dy})`}>{children}</g>;
 }

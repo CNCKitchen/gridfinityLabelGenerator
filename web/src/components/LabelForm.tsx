@@ -1,69 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import type { CustomIconMeta, LabelInput, TextFormat } from "../types/label";
-import hexSvg from "../assets/hex.svg?raw";
-import insertSvg from "../assets/insert.svg?raw";
-import lockwasherSvg from "../assets/lockwasher.svg?raw";
-import nutSvg from "../assets/nut.svg?raw";
-import squareNutSvg from "../assets/square_nut.svg?raw";
-import nylockSvg from "../assets/nylock.svg?raw";
-import phillipsSvg from "../assets/phillips.svg?raw";
-import slotSvg from "../assets/slot.svg?raw";
-import torxSvg from "../assets/torx.svg?raw";
-import washerSvg from "../assets/washer.svg?raw";
-import washerLargeSvg from "../assets/washer_large.svg?raw";
-import tNutSvg from "../assets/tnut.svg?raw";
-import rollInTNutSvg from "../assets/roll-in-tnut.svg?raw";
-import robertsonSvg from "../assets/robertson.svg?raw";
-import wingnutSvg from "../assets/wingnut.svg?raw";
-
-import trpButtonHeadSvg from "../assets/TRP_ButtonHead.svg?raw";
-import trpCountersunkSvg from "../assets/TRP_countersunkHead.svg?raw";
-import trpCskSelfTapSvg from "../assets/TRP_countersunk_selfTapping.svg?raw";
-import trpCylinderSvg from "../assets/TRP_cylinderHeadScrew.svg?raw";
-import trpCylSelfTapSvg from "../assets/TRP_cylinderHead_selfTapping.svg?raw";
-import trpGrubSvg from "../assets/TRP_grubscrew.svg?raw";
-import trpHexagonSvg from "../assets/TRP_hexagonHead.svg?raw";
-import trpLowHeadSvg from "../assets/TRP_lowHeadScrew.svg?raw";
-import trpPanHeadSvg from "../assets/TRP_PanHead.svg?raw";
-import trpPanSelfTapSvg from "../assets/TRP_panHead_selfTapping.svg?raw";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CustomIconMeta, ImageAsset, LabelInput, TextFormat } from "../types/label";
 
 import { TextFormatControls } from "./TextFormatControls";
 import { buildCustomIcon, loadCustomIcons, removeCustomIcon, saveCustomIcons } from "../services/iconStore";
 import { resolveLineBoxes } from "../services/geometry";
-import { maxFittingSize } from "../services/textMetrics";
-
-const CLIPARTS = [
-  { id: "hex",          label: "Hex",         svg: hexSvg,         viewBox: "299 276 111 111" },
-  { id: "insert",       label: "Insert",      svg: insertSvg,      viewBox: "537 346 75 98"  },
-  { id: "lockwasher",   label: "Lock Washer", svg: lockwasherSvg,  viewBox: "38 564 111 111" },
-  { id: "nut",          label: "Nut",         svg: nutSvg,         viewBox: "307 549 137 120" },
-  { id: "square_nut",   label: "Square nut",  svg: squareNutSvg,   viewBox: "-11 -11 130 130" },
-  { id: "nylock",       label: "Nylock",      svg: nylockSvg,      viewBox: "477 549 137 120" },
-  { id: "wingnut",      label: "Wingnut",     svg: wingnutSvg,     viewBox: "16 16 168 102" },
-  { id: "phillips",     label: "Phillips",    svg: phillipsSvg,    viewBox: "81 51 112 112" },
-  { id: "robertson",    label: "Robertson",   svg: robertsonSvg,   viewBox: "47 47 120 120" },
-  { id: "slot",         label: "Slot",        svg: slotSvg,        viewBox: "35 125 125 113" },
-  { id: "torx",         label: "Torx",        svg: torxSvg,        viewBox: "541 127 112 112" },
-  { id: "washer",       label: "Washer",      svg: washerSvg,      viewBox: "38 280 112 112" },
-  { id: "washer_large", label: "Washer L",    svg: washerLargeSvg, viewBox: "48 421 112 112" },
-  { id: "t_nut",        label: "T-Nut",       svg: tNutSvg,        viewBox: "15 -35 80 120" },
-  { id: "roll-in_t_nut",label: "Roll Nut",    svg: rollInTNutSvg,  viewBox: "-10 -10 100 170" },
-];
-
-// TRP screw-profile images for the line-2 box.
-// viewBox crops each A4-canvas SVG (793×1122) to the actual drawing area.
-const LINE2_IMAGES = [
-  { id: "btn",     label: "Button Head",   svg: trpButtonHeadSvg,  viewBox: "25 1070 93 29"  },
-  { id: "csk",     label: "Countersunk",   svg: trpCountersunkSvg, viewBox: "82 924 91 37"  },
-  { id: "csk-st",  label: "Csk Self-Tap",  svg: trpCskSelfTapSvg,  viewBox: "136 255 98 38"  },
-  { id: "cyl",     label: "Cylinder Head", svg: trpCylinderSvg,    viewBox: "19 1080 96 31"  },
-  { id: "cyl-st",  label: "Cyl Self-Tap",  svg: trpCylSelfTapSvg,  viewBox: "133 400 103 35" },
-  { id: "grub",    label: "Grub Screw",    svg: trpGrubSvg,        viewBox: "84 265 44 22"  },
-  { id: "hex",     label: "Hex Head",      svg: trpHexagonSvg,     viewBox: "12 1000 93 33"  },
-  { id: "low",     label: "Low Head",      svg: trpLowHeadSvg,     viewBox: "28 1042 93 32"  },
-  { id: "pan",     label: "Pan Head",      svg: trpPanHeadSvg,     viewBox: "72 977 107 31"  },
-  { id: "pan-st",  label: "Pan Self-Tap",  svg: trpPanSelfTapSvg,  viewBox: "134 329 97 33" },
-];
+import { maxFittingSizeComposed, parseLineTemplate, type LineToken } from "../services/textMetrics";
+import { BUILTIN_IMAGES, CLIPART_IMAGES } from "../services/imageRegistry";
 
 const DEFAULT_FORMAT: TextFormat = { autoSize: true, hAlign: "center", vAlign: "center" };
 
@@ -71,13 +13,16 @@ const DEFAULT_FORMAT: TextFormat = { autoSize: true, hAlign: "center", vAlign: "
 // multiplication sign to a plain lowercase 'x' at the input boundary.
 const sanitizeLabelText = (s: string): string => s.replace(/[\u00d7]/g, "x");
 
-/** Largest manual size that still fits the given line box (measured, = STL auto). */
-function useFitMax(text: string, box: { w: number; h: number }): number | null {
+// Template refs are resolved in titles/filenames to their plain name.
+const templateToPlain = (s: string): string =>
+  sanitizeLabelText(s).replace(/\$\{([^}]*)\}/g, "$1").replace(/\s+/g, " ").trim();
+
+/** Largest manual size that still fits the composed line box (measured, = STL auto). */
+function useFitMax(tokens: LineToken[], box: { w: number; h: number }, registry: ImageAsset[]): number | null {
   const [fit, setFit] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
-    const trimmed = text.trim();
-    if (!trimmed) {
+    if (tokens.length === 0) {
       setFit(null);
       return;
     }
@@ -86,17 +31,58 @@ function useFitMax(text: string, box: { w: number; h: number }): number | null {
     (async () => {
       let v: number;
       try {
-        v = await maxFittingSize(trimmed, w, h);
+        v = await maxFittingSizeComposed(tokens, w, h, registry);
       } catch {
-        v = Math.max(1.2, Math.min(h, (w * 1.7) / (trimmed.length || 1)));
+        const chars = tokens.reduce((n, t) => n + (t.type === "text" ? t.text.length : 4), 0) || 1;
+        v = Math.max(1.2, Math.min(h, (w * 1.7) / chars));
       }
       if (alive) setFit(v);
     })();
     return () => {
       alive = false;
     };
-  }, [text, box.w, box.h]);
+  }, [tokens, box.w, box.h, registry]);
   return fit;
+}
+
+/**
+ * Collapsible list of every embeddable image. Clicking one inserts the
+ * `${Name}` reference into the owning line at the current caret.
+ */
+function ImageInsertList({ assets, onInsert }: { assets: ImageAsset[]; onInsert: (name: string) => void }) {
+  return (
+    <details className="image-insert">
+      <summary>Insert image…</summary>
+      <div className="image-insert-grid">
+        {assets.map((a) => (
+          <button
+            key={`${a.id}:${a.name}`}
+            type="button"
+            className="image-insert-item"
+            onClick={() => onInsert(a.name)}
+            title={`Insert \${${a.name}}`}
+          >
+            <svg
+              viewBox={a.viewBox || "0 0 100 100"}
+              width="26"
+              height="26"
+              preserveAspectRatio="xMidYMid meet"
+              style={{ filter: "invert(1)" }}
+            >
+              <image
+                href={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(a.svg)}`}
+                x="0"
+                y="0"
+                width="793.70079"
+                height="1122.5197"
+              />
+            </svg>
+            <span>{a.name}</span>
+          </button>
+        ))}
+      </div>
+    </details>
+  );
 }
 
 interface LabelFormProps {
@@ -109,8 +95,6 @@ interface LabelFormProps {
 export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }: LabelFormProps) {
   const [line1, setLine1] = useState("M3x10");
   const [line2, setLine2] = useState("Screw");
-  const [line2Mode, setLine2Mode] = useState<"text" | "image">("text");
-  const [selectedLine2Image, setSelectedLine2Image] = useState<string | null>(null);
   const [selectedClipart, setSelectedClipart] = useState<string | null>("torx");
   const [labelWidth, setLabelWidth] = useState<1 | 2 | 3>(1);
   const [line2Enabled, setLine2Enabled] = useState(true);
@@ -120,6 +104,14 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
   const [importError, setImportError] = useState("");
   const [loading, setLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Cursor position of each line input, captured on select/click, for inserting
+  // ${Name} exactly where the user is typing.
+  const line1InputRef = useRef<HTMLInputElement>(null);
+  const line2InputRef = useRef<HTMLInputElement>(null);
+  const selLine1 = useRef(0);
+  const selLine2 = useRef(0);
+  const [pendingCaret, setPendingCaret] = useState<{ line: 1 | 2; pos: number } | null>(null);
+
   // Persist custom icons whenever they change (central place — keeps state
   // updaters pure). The first render is skipped so we never overwrite the stored
   // icons with the already-populated initial state.
@@ -132,19 +124,23 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
     saveCustomIcons(customIcons);
   }, [customIcons]);
 
+  // Registry of every embeddable image: imported icons first (so a same-named
+  // user icon shadows a built-in), then all built-ins. Stable across renders.
+  const registry = useMemo<ImageAsset[]>(
+    () => [...customIcons.map((c) => ({ id: c.id, name: c.name, svg: c.svg, viewBox: c.viewBox })), ...BUILTIN_IMAGES],
+    [customIcons]
+  );
+  const allCliparts = useMemo<ImageAsset[]>(() => [...CLIPART_IMAGES, ...customIcons], [customIcons]);
+
   // Effective boxes + measured manual-size caps for the text lines.
   const hasIcon = selectedClipart !== null;
   const hasLine1 = line1.trim().length > 0;
-  const hasLine2 = line2Enabled && (line2.trim().length > 0 || (line2Mode === "image" && !!selectedLine2Image));
+  const hasLine2 = line2Enabled && line2.trim().length > 0;
   const fitBoxes = resolveLineBoxes(labelWidth, hasIcon, hasLine1, hasLine2);
-  const line1Max = useFitMax(line1, fitBoxes.line1);
-  const line2Max = useFitMax(line2, fitBoxes.line2);
-
-  // Custom icons merged after the built-in cliparts for lookup/selection.
-  const allCliparts = [
-    ...CLIPARTS,
-    ...customIcons.map((c) => ({ id: c.id, label: c.name, svg: c.svg, viewBox: c.viewBox })),
-  ];
+  const line1Tokens = useMemo(() => parseLineTemplate(line1), [line1]);
+  const line2Tokens = useMemo(() => parseLineTemplate(line2), [line2]);
+  const line1Max = useFitMax(line1Tokens, fitBoxes.line1, registry);
+  const line2Max = useFitMax(line2Tokens, fitBoxes.line2, registry);
 
   function buildLabel(): LabelInput {
     const line1Out = sanitizeLabelText(line1);
@@ -157,22 +153,7 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
       line1Format: { ...line1Format },
       line2Format: { ...line2Format },
     };
-    if (line2Mode === "image" && selectedLine2Image && on) {
-      const img = LINE2_IMAGES.find((i) => i.id === selectedLine2Image)!;
-      return {
-        title: [line1Out].filter(Boolean).join(" "),
-        line1: line1Out,
-        line2: "",
-        iconSvg,
-        iconViewBox,
-        line2Svg: img.svg,
-        line2ViewBox: img.viewBox,
-        labelWidth,
-        line2Enabled: on,
-        ...formats,
-      };
-    }
-    const title = on ? [line1Out, line2Out].filter(Boolean).join(" ") : line1Out;
+    const title = templateToPlain(on ? [line1Out, line2Out].filter(Boolean).join(" ") : line1Out);
     return {
       title,
       line1: line1Out,
@@ -181,6 +162,7 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
       iconViewBox,
       labelWidth,
       line2Enabled: on,
+      icons: registry,
       ...formats,
     };
   }
@@ -190,7 +172,33 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
     if (!onPreviewChange) return;
     onPreviewChange(buildLabel());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [line1, line2, line2Mode, selectedLine2Image, selectedClipart, labelWidth, line2Enabled, line1Format, line2Format, customIcons, onPreviewChange]);
+  }, [line1, line2, selectedClipart, labelWidth, line2Enabled, line1Format, line2Format, customIcons, onPreviewChange]);
+
+  // Restore the text caret right after an image insert so the user can keep typing.
+  useEffect(() => {
+    if (!pendingCaret) return;
+    const input = pendingCaret.line === 1 ? line1InputRef.current : line2InputRef.current;
+    if (input) {
+      input.focus();
+      try {
+        input.setSelectionRange(pendingCaret.pos, pendingCaret.pos);
+      } catch {
+        /* not focusable */
+      }
+    }
+    setPendingCaret(null);
+  }, [pendingCaret]);
+
+  const insertImage = (line: 1 | 2, name: string) => {
+    const value = line === 1 ? line1 : line2;
+    const sel = line === 1 ? selLine1.current : selLine2.current;
+    const token = `\${${name}} `;
+    const pos = Math.max(0, Math.min(sel, value.length));
+    const next = value.slice(0, pos) + token + value.slice(pos);
+    const setter = line === 1 ? setLine1 : setLine2;
+    setter(sanitizeLabelText(next));
+    setPendingCaret({ line, pos: pos + token.length });
+  };
 
   const handleFocusEnter = (e: React.FocusEvent<HTMLFormElement>) => {
     if (onPreviewChange && !e.currentTarget.contains(e.relatedTarget as Node)) {
@@ -233,14 +241,30 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
     if (selectedClipart === id) setSelectedClipart(null);
   };
 
+  const trackCaret1 = (e: React.FormEvent<HTMLInputElement>) => {
+    selLine1.current = e.currentTarget.selectionStart ?? selLine1.current;
+  };
+  const trackCaret2 = (e: React.FormEvent<HTMLInputElement>) => {
+    selLine2.current = e.currentTarget.selectionStart ?? selLine2.current;
+  };
+
   return (
     <form className={`panel${isActive ? " panel-active" : ""}`} onSubmit={handleSubmit} onFocus={handleFocusEnter} onPointerDown={() => onActivate?.()}>
       <h2>Create Your Own Label</h2>
 
       <label>
         Line 1
-        <input value={line1} onChange={(e) => setLine1(sanitizeLabelText(e.target.value))} required />
+        <input
+          value={line1}
+          ref={line1InputRef}
+          onChange={(e) => setLine1(sanitizeLabelText(e.target.value))}
+          onSelect={trackCaret1}
+          onClick={trackCaret1}
+          onKeyUp={trackCaret1}
+          required
+        />
       </label>
+      <ImageInsertList assets={registry} onInsert={(n) => insertImage(1, n)} />
       <TextFormatControls label="Line 1 format" format={line1Format} onChange={setLine1Format} maxSize={line1Max ?? undefined} />
 
       <div className="line2-field">
@@ -253,60 +277,21 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
             />
             <span>Use line 2</span>
           </label>
-          <div className="mode-toggle">
-            <button
-              type="button"
-              className={line2Mode === "text" ? "active" : ""}
-              onClick={() => setLine2Mode("text")}
-              disabled={!line2Enabled}
-            >
-              Text
-            </button>
-            <button
-              type="button"
-              className={line2Mode === "image" ? "active" : ""}
-              onClick={() => setLine2Mode("image")}
-              disabled={!line2Enabled}
-            >
-              Image
-            </button>
-          </div>
         </div>
-        {line2Enabled && (line2Mode === "text" ? (
+        {line2Enabled && (
           <>
-            <input value={line2} onChange={(e) => setLine2(sanitizeLabelText(e.target.value))} />
+            <input
+              value={line2}
+              ref={line2InputRef}
+              onChange={(e) => setLine2(sanitizeLabelText(e.target.value))}
+              onSelect={trackCaret2}
+              onClick={trackCaret2}
+              onKeyUp={trackCaret2}
+            />
+            <ImageInsertList assets={registry} onInsert={(n) => insertImage(2, n)} />
             <TextFormatControls label="Line 2 format" format={line2Format} onChange={setLine2Format} maxSize={line2Max ?? undefined} />
           </>
-        ) : (
-          <div className="symbol-picker">
-            {LINE2_IMAGES.map((img) => (
-              <button
-                key={img.id}
-                type="button"
-                className={`symbol-item${selectedLine2Image === img.id ? " selected" : ""}`}
-                onClick={() => setSelectedLine2Image((prev) => (prev === img.id ? null : img.id))}
-                title={img.label}
-              >
-                <svg
-                  viewBox={img.viewBox}
-                  width="40"
-                  height="40"
-                  preserveAspectRatio="xMidYMid meet"
-                  style={{ filter: "invert(1)" }}
-                >
-                  <image
-                    href={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(img.svg)}`}
-                    x="0"
-                    y="0"
-                    width="793.70079"
-                    height="1122.5197"
-                  />
-                </svg>
-                <span>{img.label}</span>
-              </button>
-            ))}
-          </div>
-        ))}
+        )}
       </div>
 
       <div className="symbol-section">
@@ -324,13 +309,13 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
             </svg>
             <span>None</span>
           </button>
-          {CLIPARTS.map((c) => (
+          {CLIPART_IMAGES.map((c) => (
             <button
               key={c.id}
               type="button"
               className={`symbol-item${selectedClipart === c.id ? " selected" : ""}`}
               onClick={() => setSelectedClipart((prev) => (prev === c.id ? null : c.id))}
-              title={c.label}
+              title={c.name}
             >
               <svg
                 viewBox={c.viewBox}
@@ -347,7 +332,7 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
                   height="1122.5197"
                 />
               </svg>
-              <span>{c.label}</span>
+              <span>{c.name}</span>
             </button>
           ))}
           {customIcons.map((c) => (

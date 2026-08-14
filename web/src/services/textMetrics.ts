@@ -127,16 +127,14 @@ export async function maxFittingSize(text: string, maxW: number, maxH: number): 
 // ---------------------------------------------------------------------------
 // Template lines with embedded images ("M3 ${Button Head}").
 // A line is a sequence of text runs and `${Name}` image references. Images are
-// sized to roughly the font's cap height (so they read as a tall text glyph),
-// keep their aspect ratio, and the whole chain (text + images + gaps) is
-// auto-fitted into the line box. The preview and the STL share this module so
+// sized to the line's font size (so they read as tall as the glyphs), keep
+// their aspect ratio, and are placed inline. Whitespace is preserved exactly
+// (spaces advance like real glyphs). The preview and STL share this module so
 // their layout is identical.
 // ---------------------------------------------------------------------------
 
-/** Inline image height as a fraction of the line's font size (= ~cap height). */
-export const ICON_HEIGHT_FACTOR = 0.7;
-/** Horizontal gap (mm) inserted between consecutive text/image segments. */
-export const INLINE_GAP = 0.6;
+/** Inline image height as a fraction of the line's font size. */
+export const ICON_HEIGHT_FACTOR = 1.0;
 
 /** A raw segment of a template line, before resolving against the registry. */
 export type LineToken = { type: "text"; text: string } | { type: "ref"; name: string };
@@ -147,9 +145,8 @@ export type ComposedSegment =
   | { type: "image"; asset: ImageAsset };
 
 /**
- * Splits a line string into text and `${Name}` reference tokens. Surrounding
- * whitespace on text chunks is trimmed (the uniform INLINE_GAP takes its place);
- * empty references are dropped.
+ * Splits a line string into text and `${Name}` reference tokens, preserving all
+ * whitespace on text chunks verbatim (multiple spaces stay multiple spaces).
  */
 export function parseLineTemplate(line: string): LineToken[] {
   const tokens: LineToken[] = [];
@@ -157,14 +154,14 @@ export function parseLineTemplate(line: string): LineToken[] {
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(line))) {
-    const text = line.slice(last, m.index).replace(/\s+/g, " ").trim();
-    if (text) tokens.push({ type: "text", text });
+    const text = line.slice(last, m.index);
+    if (text.length > 0) tokens.push({ type: "text", text });
     const name = m[1].trim();
     if (name) tokens.push({ type: "ref", name });
     last = re.lastIndex;
   }
-  const text = line.slice(last).replace(/\s+/g, " ").trim();
-  if (text) tokens.push({ type: "text", text });
+  const text = line.slice(last);
+  if (text.length > 0) tokens.push({ type: "text", text });
   return tokens;
 }
 
@@ -187,32 +184,52 @@ function resolveTokens(tokens: LineToken[], registry: ImageAsset[]): ComposedSeg
   return segs;
 }
 
+/** Horizontal advance of one space character at `size` (needs font loaded). */
+function spaceAdvanceAt(size: number): number {
+  const data = (font as any)?.data;
+  const space = data?.glyphs?.[" "];
+  if (!space) return 0;
+  return space.ha * (size / data.resolution) * TRACKING;
+}
+
+/** Horizontal advance of `count` space characters at `size`. */
+function spaceAdvance(count: number, size: number): number {
+  return spaceAdvanceAt(size) * count;
+}
+
 /** Positioned token produced by layoutComposed. */
 export interface ComposedLayoutToken {
   type: "text" | "image";
   text?: string;
   asset?: ImageAsset;
-  /** Allocated width in mm (ink width for text, aspect-scaled box for images). */
+  /**
+   * Horizontal advance in mm (spaces included) — the reader moves this far
+   * past the token. For text this includes any leading/trailing spaces; the
+   * ink box only covers the visible glyphs (`prePad` shifts it into place).
+   */
   width: number;
-  /** Height in mm (ink height for text, cap-height box for images). */
+  /** Height in mm (text ink height, or image box height). Used to centre. */
   height: number;
-  /** y-up ink bounds for a text token (null for images). */
+  /** y-up ink bounds of the visible text (null for images / spaces-only runs). */
   ink: { x: number; y: number; width: number; height: number } | null;
+  /** Leading space advance (mm) that pushes the visible glyphs right. */
+  prePad: number;
 }
 
 /** Result of laying out a composed line at a given font size. */
 export interface ComposedLayout {
   tokens: ComposedLayoutToken[];
-  /** Total width including inter-segment gaps. */
+  /** Total width (advance-based, incl. spaces) used for alignment/fit. */
   totalWidth: number;
-  /** Max token height (text ink or image box). */
+  /** Max token height (text ink or image box); tokens are centred on it. */
   contentHeight: number;
 }
 
 /**
- * Measures the composed line at `size`: text ink bounds via the real glyphs,
- * images as cap-height boxes with their aspect ratio. Both were measured with
- * the same font/shapes the exporter uses, so the preview row matches the STL.
+ * Measures the composed line at `size`: text via the real glyph ink (with
+ * interior spaces counted as their advance) and images as font-size boxes with
+ * their aspect ratio. Leading/trailing text spaces still advance (so copied
+ * spacing, e.g. "M3 ${X}", keeps its gap) but are not part of the ink box.
  */
 export function layoutComposed(
   tokens: LineToken[],
@@ -225,28 +242,42 @@ export function layoutComposed(
   let runningW = 0;
   for (const seg of segs) {
     if (seg.type === "text") {
-      const ink = measureTextBounds(seg.text, size);
-      const w = ink ? ink.width : 0;
-      runningW += w;
+      const trimmedStart = seg.text.trimStart();
+      const trimmed = seg.text.trim();
+      // Leading/trailing space counts must not overlap (a spaces-only run like
+      // " " between two icons has leading==len, trailing==0, not 2 spaces).
+      const leading = seg.text.length - trimmedStart.length;
+      const trailing = trimmedStart.length - trimmed.length;
+      const prePad = spaceAdvance(leading, size);
+      const postPad = spaceAdvance(trailing, size);
+      // Font-safe: before the typeface loads we can't measure glyphs, so fall
+      // back to a rough estimate (still fine for the icon-row width, which is
+      // typically icons-only; exact measurement follows once the font is ready).
+      let ink: { x: number; y: number; width: number; height: number } | null = null;
+      if (trimmed) {
+        if (font) ink = measureTextBounds(trimmed, size);
+        else ink = { x: 0, y: 0, width: trimmed.length * size * 0.6, height: size * 0.9 };
+      }
+      const width = prePad + (ink ? ink.width : 0) + postPad;
+      runningW += width;
       contentHeight = Math.max(contentHeight, ink ? ink.height : 0);
-      tokensOut.push({ type: "text", text: seg.text, width: w, height: ink ? ink.height : 0, ink });
+      tokensOut.push({ type: "text", text: seg.text, width, height: ink ? ink.height : 0, ink, prePad });
     } else {
       const aspect = assetAspect(seg.asset);
       const h = size * ICON_HEIGHT_FACTOR;
       const w = h * aspect;
       runningW += w;
       contentHeight = Math.max(contentHeight, h);
-      tokensOut.push({ type: "image", asset: seg.asset, width: w, height: h, ink: null });
+      tokensOut.push({ type: "image", asset: seg.asset, width: w, height: h, ink: null, prePad: 0 });
     }
   }
-  const gapTotal = tokensOut.length > 1 ? INLINE_GAP * (tokensOut.length - 1) : 0;
-  return { tokens: tokensOut, totalWidth: runningW + gapTotal, contentHeight };
+  return { tokens: tokensOut, totalWidth: runningW, contentHeight };
 }
 
 /**
  * Largest font size (≥1.2, 0.1 steps) whose composed line (text + embedded
- * images + gaps) fits inside the box. This is the "auto" size for a template
- * line and the manual-size clamp limit — the STL and preview both use it.
+ * images, spaces included) fits inside the box. This is the "auto" size for a
+ * template line and the manual-size clamp limit — the STL and preview both use it.
  */
 export async function maxFittingSizeComposed(
   tokens: LineToken[],

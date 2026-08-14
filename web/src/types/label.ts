@@ -48,6 +48,12 @@ export interface LabelInput {
   iconSvg: string;
   iconViewBox?: string;  // viewBox crop for iconSvg (A4-canvas SVGs need cropping)
   iconText?: string;
+  /**
+   * Template for the large symbol/icon row on the far left (e.g. "${Hex}").
+   * Rendered as a row of icons; its width shifts the Line 1/Line 2 boxes right.
+   * When empty/absent, legacy `iconSvg`/`iconText` (fixed 9.5mm box) is used.
+   */
+  symbol?: string;
   line2Svg?: string;    // legacy: line-2 box filled by an image instead of text
   line2ViewBox?: string; // viewBox crop for line2Svg (A4-canvas SVGs need cropping)
   labelWidth?: 1 | 2 | 3; // number of gridfinity units wide (37.8 + (n-1)*42 mm)
@@ -58,7 +64,7 @@ export interface LabelInput {
   /** When false, line 2 (and its SVG image) is skipped entirely. Default true. */
   line2Enabled?: boolean;
   /**
-   * Named images available for `${Name}` references in `line1`/`line2`.
+   * Named images available for `${Name}` references in `line1`/`line2`/`symbol`.
    * Defaults to the built-in image registry when omitted.
    */
   icons?: ImageAsset[];

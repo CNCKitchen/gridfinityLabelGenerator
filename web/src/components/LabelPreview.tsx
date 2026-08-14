@@ -12,7 +12,6 @@ import {
 } from "../services/geometry";
 import { BUILTIN_IMAGES } from "../services/imageRegistry";
 import {
-  INLINE_GAP,
   layoutComposed,
   maxFittingSizeComposed,
   parseLineTemplate,
@@ -23,26 +22,27 @@ import {
 // Label DXF paths extracted from label.svg (Inkscape DXF export, 96 dpi).
 // LABEL_TRANSFORM maps local px → overlay mm (0..37.8 × 0..11.5):
 //   scale(0.264583) translate(137.19, -1120.59)
-// Local extents: x -137.19..5.67 (37.8mm), y 1120.59..1164.06 (11.5mm)
 const LABEL_TRANSFORM = "scale(0.264583) translate(137.19, -1120.59)";
 
-// Full label coordinate space (0..LABEL_BASE_W × 0..11.5 mm), derived from STL bounding box.
-// SVG Y increases downward; 3D Y increases upward — boxes are pre-flipped.
+// Full label coordinate space (0..LABEL_BASE_W × 0..11.5 mm), SVG Y downward.
 const LABEL_BASE_W = 37.8;
 const LABEL_H = 11.5;
 
 // The screw SVG (screw_lowHead.svg) has an A4-sized viewBox (793×1122).
-// This viewBox crops to the actual screw path area, matching the line-2 box AR (~5:1).
 const SCREW_SVG_VIEWBOX = "32.4 18.7 80.2 16";
 
-const ICON_BOX = { x: 3.0, y: 1.0, w: 9.5, h: 9.5 };
+// Legacy fixed icon box (catalog labels that pass iconSvg/iconText).
+const LEGACY_ICON_BOX = { x: 3.0, y: 1.0, w: 9.5, h: 9.5 };
+// The large left icon row renders its icons at this height (from `${...}` refs).
+const ICON_AREA_H = 9.5;
+const LEGACY_ICON_WIDTH = 9.5;
 
 const FONT = "Arial, 'Helvetica Neue', Helvetica, sans-serif";
 const ICON_GAP = 0.4; // mm between TX and number halves — keeps them visually tight
 
 // Fallback used only until the measured font size resolves (brief flash).
 function fittingFontSize(tokens: LineToken[], maxW: number, maxH: number): number {
-  const chars = tokens.reduce((n, t) => n + (t.type === "text" ? t.text.length : 4), 0) || 1;
+  const chars = tokens.reduce((n, t) => n + (t.type === "text" ? t.text.length : 8), 0) || 1;
   return Math.max(1.2, Math.min((maxW * 1.7) / chars, maxH));
 }
 
@@ -55,13 +55,21 @@ export function LabelPreview({ label }: LabelPreviewProps) {
   const extraW = labelExtraWidth(labelWidth);
   const labelW = labelPhysicalWidth(labelWidth);
 
-  // Resolve the effective boxes + sizes for the two text lines.
-  const hasIcon = !!(label?.iconSvg || label?.iconText);
+  const registry = label?.icons ?? BUILTIN_IMAGES;
+  const hasLegacyIcon = !!(label?.iconSvg || label?.iconText);
+  const symbolTokens = useMemo(() => (label?.symbol ? parseLineTemplate(label.symbol) : []), [label?.symbol]);
+  const hasSymbol = !!(label?.symbol && label.symbol.trim());
+
+  // Effective boxes + sizes. The left icon-row width shifts the text boxes.
+  const iconRowWidth = useMemo(() => {
+    if (label?.symbol && label.symbol.trim()) return layoutComposed(symbolTokens, ICON_AREA_H, registry).totalWidth;
+    return hasLegacyIcon ? LEGACY_ICON_WIDTH : 0;
+  }, [symbolTokens, registry, label?.symbol, hasLegacyIcon]);
+
   const hasLine1 = !!label?.line1?.trim();
   const line2Enabled = label ? label.line2Enabled !== false : true;
   const hasLine2 = line2Enabled && !!(label && (label.line2Svg || label.line2.trim()));
-  const boxes = resolveLineBoxes(labelWidth, hasIcon, hasLine1, hasLine2);
-  const registry = label?.icons ?? BUILTIN_IMAGES;
+  const boxes = resolveLineBoxes(labelWidth, iconRowWidth, hasLine1, hasLine2);
   const line1Tokens = useMemo(() => parseLineTemplate(label?.line1 ?? ""), [label?.line1]);
   const line2Tokens = useMemo(() => parseLineTemplate(label?.line2 ?? ""), [label?.line2]);
   const line1Size = useResolvedComposedSize(line1Tokens, boxes.line1, label?.line1Format, registry);
@@ -71,10 +79,7 @@ export function LabelPreview({ label }: LabelPreviewProps) {
   const VB_MARGIN = 1;
   const VB = `${-VB_MARGIN} ${-VB_MARGIN} ${labelW + VB_MARGIN * 2} ${LABEL_H + VB_MARGIN * 2}`;
 
-  // Stretch factor for the fixed body outline: the whole DXF outline is scaled about
-  // the left edge, so on 2×/3× the outline is an approximation (the real STL keeps
-  // the left half unscaled and extends only the right half). Icon/text boxes are
-  // drawn in absolute mm and are unaffected by this scaling.
+  // Stretch factor for the fixed body outline (see note in resolveLineBoxes).
   const bodyScaleX = labelW / LABEL_BASE_W;
 
   function renderLabelShape() {
@@ -114,17 +119,28 @@ export function LabelPreview({ label }: LabelPreviewProps) {
   function renderIcon() {
     if (!label) return null;
 
+    // Large left symbol/icon row, defined by a template like "${Hex}".
+    if (hasSymbol) {
+      return renderComposedLine(
+        symbolTokens,
+        { x: 3.0, y: 1.0, w: iconRowWidth, h: ICON_AREA_H },
+        { autoSize: true, hAlign: "left", vAlign: "center" },
+        ICON_AREA_H,
+        registry
+      );
+    }
+
     if (label.iconText) {
       const match = label.iconText.match(/^([A-Za-z]+)(\d+.*)$/);
       const parts = match ? [match[1], match[2]] : [label.iconText];
-      const partH = (ICON_BOX.h - (parts.length > 1 ? ICON_GAP : 0)) / parts.length;
+      const partH = (LEGACY_ICON_BOX.h - (parts.length > 1 ? ICON_GAP : 0)) / parts.length;
       return parts.map((part, i) => {
-        const partY = ICON_BOX.y + i * (partH + ICON_GAP);
-        const fs = Math.min((ICON_BOX.w * 1.7) / (part.length || 1), partH);
+        const partY = LEGACY_ICON_BOX.y + i * (partH + ICON_GAP);
+        const fs = Math.min((LEGACY_ICON_BOX.w * 1.7) / (part.length || 1), partH);
         return (
           <text
             key={i}
-            x={ICON_BOX.x + ICON_BOX.w / 2}
+            x={LEGACY_ICON_BOX.x + LEGACY_ICON_BOX.w / 2}
             y={partY + partH / 2}
             textAnchor="middle"
             dominantBaseline="central"
@@ -144,10 +160,10 @@ export function LabelPreview({ label }: LabelPreviewProps) {
       if (label.iconViewBox) {
         return (
           <svg
-            x={ICON_BOX.x}
-            y={ICON_BOX.y}
-            width={ICON_BOX.w}
-            height={ICON_BOX.h}
+            x={LEGACY_ICON_BOX.x}
+            y={LEGACY_ICON_BOX.y}
+            width={LEGACY_ICON_BOX.w}
+            height={LEGACY_ICON_BOX.h}
             viewBox={label.iconViewBox}
             preserveAspectRatio="xMidYMid meet"
           >
@@ -170,10 +186,10 @@ export function LabelPreview({ label }: LabelPreviewProps) {
       return (
         <image
           href={`data:image/svg+xml;charset=utf-8,${encoded}`}
-          x={ICON_BOX.x}
-          y={ICON_BOX.y}
-          width={ICON_BOX.w}
-          height={ICON_BOX.h}
+          x={LEGACY_ICON_BOX.x}
+          y={LEGACY_ICON_BOX.y}
+          width={LEGACY_ICON_BOX.w}
+          height={LEGACY_ICON_BOX.h}
           preserveAspectRatio="xMidYMid meet"
           filter="url(#lp-to-white)"
         />
@@ -184,7 +200,7 @@ export function LabelPreview({ label }: LabelPreviewProps) {
   }
 
   function renderLine1() {
-    if (!label?.line1 || line1Size == null) return null; // wait for the measured size/font
+    if (!label?.line1 || line1Size == null) return null;
     return renderComposedLine(line1Tokens, boxes.line1, label.line1Format, line1Size, registry);
   }
 
@@ -239,10 +255,9 @@ export function LabelPreview({ label }: LabelPreviewProps) {
 }
 
 /**
- * Resolves the effective font size for a (possibly image-bearing) line: the
- * biggest size whose whole composed chain (text ink + inline images + gaps)
- * fits the box (== the STL auto-size), or the manual size clamped to that same
- * limit. Computed asynchronously via the shared typeface metrics.
+ * Resolves the effective font size for a template line: the biggest size whose
+ * whole composed chain (text ink + inline images + spaces) fits the box (== the
+ * STL auto-size), or the manual size clamped to that same limit. Async.
  */
 function useResolvedComposedSize(
   tokens: LineToken[],
@@ -251,8 +266,6 @@ function useResolvedComposedSize(
   registry: ImageAsset[]
 ): number | null {
   const [size, setSize] = useState<number | null>(null);
-  // Content-based key so an identical registry (same icons, same order) doesn't
-  // re-trigger the fit even if the array identity changed between renders.
   const regKey = useMemo(() => registry.map((a) => a.id).join("|"), [registry]);
   useEffect(() => {
     let alive = true;
@@ -285,11 +298,10 @@ function useResolvedComposedSize(
 }
 
 /**
- * Renders a template line as a row of text glyph paths and inline `${Name}`
- * images, laid out with the shared textMetrics module so it matches the STL
- * exactly: same composed width, same cap-height images, same top/ink alignment.
- * Text runs are drawn from the actual helvetiker outlines; images are fit into
- * a cap-height box preserving their aspect.
+ * Renders a template string as a row of text glyph paths and inline `${Name}`
+ * images, laid out with the shared textMetrics module so it matches the STL:
+ * same advance/width (spaces preserved), icons the same size as the glyphs, all
+ * tokens centred on the content's vertical centre.
  */
 function renderComposedLine(
   tokens: LineToken[],
@@ -303,24 +315,24 @@ function renderComposedLine(
   const fmt = format ?? DEFAULT_TEXT_FORMAT;
   const dx = hAlignOffset(fmt.hAlign, box.w, layout.totalWidth);
   const dy = vAlignOffset(fmt.vAlign, box.h, layout.contentHeight, false);
+  const centerY = layout.contentHeight / 2;
 
   const children: import("react").ReactNode[] = [];
   let cursor = 0;
-  for (let i = 0; i < layout.tokens.length; i++) {
-    const t = layout.tokens[i];
+  for (const t of layout.tokens) {
     if (t.type === "text" && t.text && t.ink) {
-      const d = textToSvgPath(t.text, size);
-      // textToSvgPath already flips y (top at -(ink.y+ink.height)); bring that
-      // top edge to the content top (group y=0) by translating up by (ink.y+h).
-      const ty = t.ink.y + t.ink.height;
-      const tx = cursor - t.ink.x; // ink left edge lands exactly at cursor
-      children.push(
-        <path key={i} d={d} transform={`translate(${tx} ${ty})`} fill="#e2e8f0" fillRule="evenodd" />
-      );
+      const d = textToSvgPath(t.text.trim(), size);
+      const inkTopY = centerY - t.height / 2;
+      // textToSvgPath already flips y (natural top = -(ink.y+ink.height));
+      // bring that top edge to inkTopY, and the ink left to cursor+prePad.
+      const tx = cursor + t.prePad - t.ink.x;
+      const ty = inkTopY + (t.ink.y + t.ink.height);
+      children.push(<path key={`t${children.length}`} d={d} transform={`translate(${tx} ${ty})`} fill="#e2e8f0" fillRule="evenodd" />);
     } else if (t.type === "image" && t.asset) {
       const vb = t.asset.viewBox || "0 0 100 100";
+      const yTop = centerY - t.height / 2;
       children.push(
-        <svg key={i} x={cursor} y={0} width={t.width} height={t.height} viewBox={vb} preserveAspectRatio="xMidYMid meet">
+        <svg key={`i${children.length}`} x={cursor} y={yTop} width={t.width} height={t.height} viewBox={vb} preserveAspectRatio="xMidYMid meet">
           <image
             href={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(t.asset.svg)}`}
             x="0"
@@ -332,8 +344,7 @@ function renderComposedLine(
         </svg>
       );
     }
-    cursor += t.width;
-    if (i < layout.tokens.length - 1) cursor += INLINE_GAP;
+    cursor += t.width; // spaces are already inside t.width (advance)
   }
 
   return <g transform={`translate(${box.x + dx} ${box.y + dy})`}>{children}</g>;

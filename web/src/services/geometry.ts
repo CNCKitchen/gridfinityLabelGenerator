@@ -85,14 +85,9 @@ export interface Box2 {
   h: number;
 }
 
-const ICON_BOX = { x: 3.0, y: 1.0, w: 9.5, h: 9.5 };
-const LINE1_BASE = { x: 13.5, y: 1.0, w: 21.3, h: 4.25 }; // top half
-const LINE2_BASE = { x: 13.5, y: 6.25, w: 21.3, h: 4.25 }; // bottom half
-const FULL_L1_BASE = { x: 3.0, y: 1.0, w: 31.8, h: 4.25 };
-const FULL_L2_BASE = { x: 3.0, y: 6.25, w: 31.8, h: 4.25 };
-// When only one text line is used it may span the label's full height
-const SINGLE_BASE = { x: 13.5, y: 1.0, w: 21.3, h: 9.5 };
-const FULL_SINGLE_BASE = { x: 3.0, y: 1.0, w: 31.8, h: 9.5 };
+const ICON_AREA_X = 3.0; // left edge of the (large) symbol/icon row
+const TEXT_ICON_GAP = 1.0; // gap between the icon row and the text lines
+const TEXT_RIGHT_EDGE = 34.8; // right edge all text boxes share (37.8 - right margin)
 
 function widenBox(b: Box2, extra: number): Box2 {
   return { ...b, w: b.w + extra }; // label grows to the right; icon column stays fixed
@@ -100,23 +95,22 @@ function widenBox(b: Box2, extra: number): Box2 {
 
 /**
  * Resolves the effective rendering box for line 1 and line 2 of a label.
- * `extra` width from 2×/3× is given to the text boxes; a missing line2/line1 gets
- * the full-height single box. Used to size text and to bound the manual size input.
+ * `iconRowWidth` is the horizontal extent (mm) of the large icon/symbol row on
+ * the left (0 when there is none) — the text boxes shift right accordingly.
+ * `extra` width from 2×/3× is given to the text boxes; a missing line2/line1
+ * gets the full-height single box. Used to size text and bound the manual size.
  */
 export function resolveLineBoxes(
   labelWidth: number,
-  hasIcon: boolean,
+  iconRowWidth: number,
   hasLine1: boolean,
   hasLine2: boolean
 ): { line1: Box2; line2: Box2 } {
   const extra = labelExtraWidth(labelWidth);
-  const l1 = widenBox(LINE1_BASE, extra);
-  const l2 = widenBox(LINE2_BASE, extra);
-  const f1 = widenBox(FULL_L1_BASE, extra);
-  const f2 = widenBox(FULL_L2_BASE, extra);
-  const s = widenBox(SINGLE_BASE, extra);
-  const fs = widenBox(FULL_SINGLE_BASE, extra);
-  const line1 = !hasLine2 ? (hasIcon ? s : fs) : hasIcon ? l1 : f1;
-  const line2 = !hasLine1 ? (hasIcon ? s : fs) : hasIcon ? l2 : f2;
+  const startX = iconRowWidth > 0 ? ICON_AREA_X + iconRowWidth + TEXT_ICON_GAP : ICON_AREA_X;
+  const width = TEXT_RIGHT_EDGE - startX + extra;
+  const box = (y: number, h: number): Box2 => widenBox({ x: startX, y, w: width, h }, 0);
+  const line1 = !hasLine2 ? box(1.0, 9.5) : box(1.0, 4.25);
+  const line2 = !hasLine1 ? box(1.0, 9.5) : box(6.25, 4.25);
   return { line1, line2 };
 }

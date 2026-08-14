@@ -23,7 +23,6 @@ import { BUILTIN_IMAGES } from "./imageRegistry";
 import {
   ensureTextFont,
   generateShapesWithTracking,
-  INLINE_GAP,
   layoutComposed,
   maxFittingSizeComposed,
   parseLineTemplate,
@@ -32,14 +31,15 @@ import {
 
 const EMBOSS_HEIGHT = 0.4;
 
+// The large symbol/icon row on the far left. Its width is dynamic (from the
+// symbol template); the text lines shift right by it. 1.5 is the local x origin
+// (== CONTENT_ORIGIN_X offset); right edge of all text boxes is 34.5.
+const ICON_AREA_HEIGHT = 9.5;
+const ICON_AREA_X = 1.5;
+const TEXT_RIGHT_EDGE = 34.5;
+const LEGACY_ICON_WIDTH = 9.5;
+
 const SVG_BOX = { x1: 1.5, y1: 0.5, x2: 11, y2: 10 };
-const TEXT_TOP_BOX = { x1: 11, y1: 5.75, x2: 34.5, y2: 10 };
-const TEXT_BOTTOM_BOX = { x1: 11, y1: 0.5, x2: 34.5, y2: 4.75 };
-const TEXT_TOP_BOX_NO_ICON = { x1: 1.5, y1: 5.75, x2: 34.5, y2: 10 };
-const TEXT_BOTTOM_BOX_NO_ICON = { x1: 1.5, y1: 0.5, x2: 34.5, y2: 4.75 };
-// When only one text line is used it may span the label's full height
-const TEXT_SINGLE_BOX = { x1: 11, y1: 0.5, x2: 34.5, y2: 10 };
-const TEXT_SINGLE_BOX_NO_ICON = { x1: 1.5, y1: 0.5, x2: 34.5, y2: 10 };
 
 type Rect = { x1: number; y1: number; x2: number; y2: number };
 
@@ -314,10 +314,26 @@ async function effectiveComposedSize(
 }
 
 /**
+ * Width (mm) of the large symbol/icon row on the left, which shifts the text
+ * lines right. Computed from the symbol template at the large icon size; falls
+ * back to the fixed legacy width when the label uses `iconSvg`/`iconText`.
+ */
+function computeIconRowWidth(label: LabelInput, registry: ImageAsset[]): number {
+  if (label.symbol && label.symbol.trim()) {
+    const tokens = parseLineTemplate(label.symbol);
+    if (tokens.length === 0) return 0;
+    return layoutComposed(tokens, ICON_AREA_HEIGHT, registry).totalWidth;
+  }
+  if (label.iconSvg || label.iconText) return LEGACY_ICON_WIDTH;
+  return 0;
+}
+
+/**
  * Builds the meshes for one composed line (text runs + inline images) and
- * places them in `box` honouring the 3×3 alignment grid. The layout comes from
- * the shared textMetrics module so the STL and the preview occupy the same
- * space. Returns null when there is nothing to draw.
+ * places them in `box` honouring the 3×3 alignment grid. Tokens are centred on
+ * the content's vertical centre so icons read aligned with the text. The layout
+ * comes from the shared textMetrics module so the STL and preview match exactly.
+ * Returns null when there is nothing to draw.
  */
 function buildComposedLineGroup(
   tokens: LineToken[],
@@ -339,58 +355,77 @@ function buildComposedLineGroup(
   group.position.set(box.x1 + hOff, box.y1 + vOff, 0);
 
   const z = topZ - 0.4; // content sits on the label surface (top at topZ)
+  const centerY = layout.contentHeight / 2;
   let cursor = 0;
-  for (let i = 0; i < layout.tokens.length; i++) {
-    const t = layout.tokens[i];
+  for (const t of layout.tokens) {
     if (t.type === "text" && t.text && t.ink) {
-      const shapes = generateShapesWithTracking(t.text, size);
-      if (shapes.length === 0) { cursor += t.width; }
-      else {
+      const shapes = generateShapesWithTracking(t.text.trim(), size);
+      if (shapes.length > 0) {
         const geometry = new ExtrudeGeometry(shapes, { depth: EMBOSS_HEIGHT, bevelEnabled: false, curveSegments: 10 });
         geometry.computeBoundingBox();
         const b = geometry.boundingBox;
         if (b) {
           const mesh = new Mesh(geometry, material);
-          // Top-align the text's ink box to the content top, left edge at cursor.
-          mesh.position.set(cursor - b.min.x, layout.contentHeight - b.max.y, z);
+          const inkCenterY = b.min.y + (b.max.y - b.min.y) / 2;
+          // Ink left edge at cursor+prePad; ink centre centred on the line.
+          mesh.position.set((cursor + t.prePad) - b.min.x, centerY - inkCenterY, z);
           group.add(mesh);
         }
       }
     } else if (t.type === "image" && t.asset) {
       const mesh = buildSvgMeshInLocalBox(t.asset.svg, t.width, t.height);
       if (mesh) {
-        // Box top aligned to the content top; the fit-in-box masks any extra
-        // height so the icon reads at cap height like a text glyph.
+        // Centre the image box on the line; the fit-in-box keeps its aspect.
         mesh.position.x += cursor;
-        mesh.position.y += layout.contentHeight - t.height;
+        mesh.position.y += centerY - t.height / 2;
         mesh.position.z = z;
         group.add(mesh);
       }
     }
-    cursor += t.width;
-    if (i < layout.tokens.length - 1) cursor += INLINE_GAP;
+    cursor += t.width; // spaces (incl. prePad/postPad) are already in t.width
   }
   return group.children.length > 0 ? group : null;
 }
 
+/** Builds the meshes for the large symbol/icon row on the far left (or legacy). */
+function buildIconRowMeshes(label: LabelInput, registry: ImageAsset[]): (Mesh | Group)[] {
+  if (label.symbol && label.symbol.trim()) {
+    const tokens = parseLineTemplate(label.symbol);
+    const width = layoutComposed(tokens, ICON_AREA_HEIGHT, registry).totalWidth;
+    if (width <= 0) return [];
+    const box: Rect = {
+      x1: CONTENT_ORIGIN_X + ICON_AREA_X,
+      y1: CONTENT_ORIGIN_Y + 0.5,
+      x2: CONTENT_ORIGIN_X + ICON_AREA_X + width,
+      y2: CONTENT_ORIGIN_Y + 0.5 + ICON_AREA_HEIGHT,
+    };
+    const g = buildComposedLineGroup(tokens, ICON_AREA_HEIGHT, box, { autoSize: true, hAlign: "left", vAlign: "center" }, registry);
+    return g ? [g] : [];
+  }
+  if (label.iconText) {
+    return buildIconTextMeshes(label.iconText);
+  }
+  const iconMesh = buildIconMesh(label.iconSvg);
+  return iconMesh ? [iconMesh] : [];
+}
+
 async function buildTextMeshes(label: LabelInput, registry: ImageAsset[]): Promise<(Mesh | Group)[]> {
-  const hasIcon = !!label.iconText || !!label.iconSvg;
+  const iconW = computeIconRowWidth(label, registry);
   const hasLine1 = !!label.line1.trim();
   const line2Enabled = label.line2Enabled !== false;
   const hasLine2 = line2Enabled && (!!label.line2Svg || !!label.line2.trim());
 
-  // The only present line gets the label's full height. Text boxes are widened
-  // by currentExtraWidth so 2×/3× labels get genuinely more text room.
+  const left = ICON_AREA_X + iconW;
+  const right = TEXT_RIGHT_EDGE;
+
+  // The only present line gets the label's full height. Boxes are widened by
+  // currentExtraWidth so 2×/3× labels get genuinely more text room.
   const topRect = extendRectRight(
-    !hasLine2
-      ? (hasIcon ? TEXT_SINGLE_BOX : TEXT_SINGLE_BOX_NO_ICON)
-      : (hasIcon ? TEXT_TOP_BOX : TEXT_TOP_BOX_NO_ICON),
+    !hasLine2 ? { x1: left, y1: 0.5, x2: right, y2: 10 } : { x1: left, y1: 5.75, x2: right, y2: 10 },
     currentExtraWidth
   );
   const bottomRect = extendRectRight(
-    !hasLine1
-      ? (hasIcon ? TEXT_SINGLE_BOX : TEXT_SINGLE_BOX_NO_ICON)
-      : (hasIcon ? TEXT_BOTTOM_BOX : TEXT_BOTTOM_BOX_NO_ICON),
+    !hasLine1 ? { x1: left, y1: 0.5, x2: right, y2: 10 } : { x1: left, y1: 0.5, x2: right, y2: 4.75 },
     currentExtraWidth
   );
 
@@ -447,13 +482,7 @@ export async function generateLabelStl(label: LabelInput): Promise<ArrayBuffer> 
 
   const root = new Group();
   root.add(baseMesh);
-  if (label.iconText) {
-    for (const m of buildIconTextMeshes(label.iconText)) root.add(m);
-  }
-  else {
-    const iconMesh = buildIconMesh(label.iconSvg);
-    if (iconMesh) root.add(iconMesh);
-  }
+  for (const m of buildIconRowMeshes(label, registry)) root.add(m);
   for (const textMesh of await buildTextMeshes(label, registry)) {
     root.add(textMesh);
   }

@@ -77,8 +77,15 @@ export function normalizeImportedSvg(svgString: string): { svg: string; viewBox:
   const wrap = document.createElementNS(ns, "svg");
   wrap.setAttribute("xmlns", ns);
   wrap.setAttribute("viewBox", `0 0 ${A4_W} ${A4_H}`);
+  // Explicit intrinsic size matching the viewBox, so the fixed-A4 <image> renders
+  // the canvas 1:1 (the built-in A4 SVGs carry the same width/height/viewBox).
+  wrap.setAttribute("width", String(A4_W));
+  wrap.setAttribute("height", String(A4_H));
   const group = document.createElementNS(ns, "g");
-  group.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
+  // Subtract the content origin (bx,by) so the drawing lands inside the centred
+  // box; otherwise content offset from (0,0) gets shifted right/down past the
+  // A4 canvas edge and appears clipped / off-centre.
+  group.setAttribute("transform", `translate(${tx - bx * scale} ${ty - by * scale}) scale(${scale})`);
   // Drop the source root's own transform/viewBox by importing only its children.
   for (const child of Array.from(root.childNodes)) {
     group.appendChild(wrap.ownerDocument.importNode(child, true));
@@ -86,8 +93,8 @@ export function normalizeImportedSvg(svgString: string): { svg: string; viewBox:
   wrap.appendChild(group);
 
   const svg = new XMLSerializer().serializeToString(wrap);
-  // Crop the A4 canvas to the (centered) content box, with a little breathing room.
-  const m = Math.max(bw, bh) * 0.1 * scale;
+  // Crop the A4 canvas to the (centred) content box, with modest breathing room.
+  const m = Math.max(bw, bh) * 0.03 * scale;
   const viewBox = `${(tx - m).toFixed(2)} ${(ty - m).toFixed(2)} ${(gW + m * 2).toFixed(2)} ${(gH + m * 2).toFixed(2)}`;
   return { svg, viewBox };
 }

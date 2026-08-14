@@ -338,44 +338,64 @@ button:disabled {
 }
 
 .symbol-picker {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
   gap: 8px;
 }
 
 .symbol-item {
   margin-top: 0;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px;
-  width: 76px;
+  padding: 8px 4px;
   background: #0f172a;
   border: 2px solid #334155;
   border-radius: 8px;
-  cursor: pointer;
   color: #94a3b8;
   font-size: 12px;
   font-weight: 400;
   transition: border-color 0.1s, color 0.1s;
+  overflow: hidden;
 }
-
-.symbol-item img {
-  width: 40px;
-  height: 40px;
-  object-fit: contain;
-  filter: invert(1);
-}
-
-.symbol-item:hover:not(.selected) {
+.symbol-item:hover {
   border-color: #64748b;
   color: #e2e8f0;
 }
-
-.symbol-item.selected {
-  border-color: #22c55e;
-  color: #e2e8f0;
+.symbol-select {
+  all: unset;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.sym-thumb {
+  width: 38px;
+  height: 38px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sym-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: invert(1);
+}
+.symbol-name {
+  width: 100%;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 @media (max-width: 800px) {
@@ -448,27 +468,7 @@ button:disabled {
   color: #e2e8f0;
 }
 
-/* ---- Custom imported icons ---- */
-.custom-symbol {
-  position: relative;
-  padding: 8px;
-}
-.custom-symbol .symbol-select {
-  all: unset;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  color: #94a3b8;
-  font-size: 12px;
-  font-weight: 400;
-  text-align: center;
-  width: 100%;
-}
-.custom-symbol.selected .symbol-select {
-  color: #e2e8f0;
-}
+/* ---- Custom imported icons (gallery) ---- */
 .symbol-remove {
   position: absolute;
   top: -8px;
@@ -528,13 +528,18 @@ button:disabled {
   color: #e2e8f0;
 }
 
-/* Transient toast after an icon name is copied to the clipboard */
+/* Toast after an icon name is copied — pinned to the bottom of the viewport
+   so it is always visible regardless of scroll position. */
 .copied-hint {
-  display: inline-block;
-  margin-top: 8px;
-  padding: 4px 10px;
-  font-size: 12px;
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  padding: 8px 16px;
+  font-size: 13px;
   color: #052e16;
   background: #86efac;
-  border-radius: 6px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }

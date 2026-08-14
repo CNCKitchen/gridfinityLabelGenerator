@@ -24,6 +24,16 @@ const sanitizeLabelText = (s: string): string => s.replace(/[\u00d7]/g, "x");
 const templateToPlain = (s: string): string =>
   sanitizeLabelText(s).replace(/\$\{([^}]*)\}/g, "$1").replace(/\s+/g, " ").trim();
 
+/**
+ * Data URL of an icon cropped to its content viewBox, so an <img> with
+ * object-fit:contain shows just the drawing (no giant A4 canvas overflowing).
+ */
+function iconThumbSrc(a: ImageAsset): string {
+  const vb = a.viewBox || "0 0 100 100";
+  const svg = a.svg.replace(/(<svg[^>]*\bviewBox=")[^"]*"/, `$1${vb}"`);
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 /** Best-effort clipboard copy with a textarea fallback for older browsers. */
 async function copyText(text: string): Promise<void> {
   try {
@@ -259,29 +269,17 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
         <span>Icons</span>
         <div className="symbol-picker">
           {gallery.map((a) => (
-            <div key={`${a.id}:${a.name}`} className={`symbol-item${a.id.startsWith("custom-") ? " custom-symbol" : ""}`}>
+            <div key={`${a.id}:${a.name}`} className="symbol-item">
               <button
                 type="button"
                 className="symbol-select"
                 onClick={() => handleCopyIcon(a.name)}
                 title={`Copy \${${a.name}} to clipboard`}
               >
-                <svg
-                  viewBox={a.viewBox || "0 0 100 100"}
-                  width="40"
-                  height="40"
-                  preserveAspectRatio="xMidYMid meet"
-                  style={{ filter: "invert(1)" }}
-                >
-                  <image
-                    href={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(a.svg)}`}
-                    x="0"
-                    y="0"
-                    width="793.70079"
-                    height="1122.5197"
-                  />
-                </svg>
-                <span>{a.name}</span>
+                <span className="sym-thumb">
+                  <img src={iconThumbSrc(a)} alt={a.name} loading="lazy" />
+                </span>
+                <span className="symbol-name">{a.name}</span>
               </button>
               {a.id.startsWith("custom-") && (
                 <button

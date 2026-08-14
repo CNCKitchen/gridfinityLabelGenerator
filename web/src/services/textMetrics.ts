@@ -273,14 +273,28 @@ export async function maxFittingSizeComposed(
 ): Promise<number> {
   await loadFont();
   if (tokens.length === 0) return 0;
-  let size = Math.max(6, maxH * 1.4);
+  const startSize = Math.max(6, maxH * 1.4);
   const minSize = 1.2;
-  while (size > minSize) {
-    const lo = layoutComposed(tokens, size, registry);
-    if (lo.totalWidth <= maxW && lo.contentHeight <= maxH) return size;
-    size -= 0.1;
+  // Fit is monotonic — a smaller size never widens the line — so instead of
+  // stepping down by 0.1 (O(n) layouts) we binary-search the same 0.1 grid for
+  // the largest fitting size (O(log n) layouts). The grid and the 1.2 fallback
+  // are unchanged from the linear version.
+  const minIdx = Math.round(minSize * 10) + 1; // first size actually tested (1.3)
+  const maxIdx = Math.round(startSize * 10);
+  let lo = minIdx;
+  let hi = maxIdx;
+  let best = minIdx - 1;
+  while (lo <= hi) {
+    const mid = lo + ((hi - lo) >> 1);
+    const laid = layoutComposed(tokens, mid / 10, registry);
+    if (laid.totalWidth <= maxW && laid.contentHeight <= maxH) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
   }
-  return minSize;
+  return best >= minIdx ? best / 10 : minSize;
 }
 
 const fmt = (n: number): string => (Math.round(n * 100) / 100).toFixed(2);

@@ -372,6 +372,12 @@ button:disabled {
   gap: 5px;
   cursor: pointer;
 }
+.symbol-select:focus-visible {
+  /* all: unset wiped the browser's default focus ring — restore a visible one */
+  outline: 2px solid #22c55e;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
 .sym-thumb {
   width: 38px;
   height: 38px;
@@ -471,8 +477,10 @@ button:disabled {
 /* ---- Custom imported icons (gallery) ---- */
 .symbol-remove {
   position: absolute;
-  top: -8px;
-  right: -8px;
+  /* Inside the padding box so it isn't clipped by .symbol-item's overflow:hidden
+     (which must stay for the two-line name truncation). */
+  top: 6px;
+  right: 6px;
   width: 18px;
   height: 18px;
   padding: 0;

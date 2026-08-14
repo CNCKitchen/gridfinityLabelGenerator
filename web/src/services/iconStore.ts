@@ -12,11 +12,27 @@ const A4_W = 793.70079;
 const A4_H = 1122.5197;
 
 /**
+ * Strips executable content from a parsed SVG before it enters the live document
+ * (for measuring) or is serialized (for storage/reuse): removes every <script>
+ * and drops all on* event-handler attributes. Imported SVGs are arbitrary user
+ * input, so this keeps a hostile file from running JS or attaching handlers.
+ */
+function sanitizeParsedSvg(doc: Document): void {
+  for (const el of Array.from(doc.querySelectorAll("script"))) el.remove();
+  for (const el of Array.from(doc.querySelectorAll("*"))) {
+    for (const attr of Array.from(el.attributes)) {
+      if (attr.name.toLowerCase().startsWith("on")) el.removeAttribute(attr.name);
+    }
+  }
+}
+
+/**
  * Measures the content bounding box of an SVG in its own user units by temporary
  * DOM insertion + getBBox (robust for Inkscape/A4 canvases and small icons alike).
  */
 function measureContentBox(svgString: string): { x: number; y: number; w: number; h: number } {
   const doc = new DOMParser().parseFromString(svgString, "image/svg+xml");
+  sanitizeParsedSvg(doc);
   const root = doc.documentElement;
 
   const ns = "http://www.w3.org/2000/svg";
@@ -65,6 +81,7 @@ export function normalizeImportedSvg(svgString: string): { svg: string; viewBox:
   if (doc.getElementsByTagName("parsererror").length > 0) {
     throw new Error("Invalid SVG markup");
   }
+  sanitizeParsedSvg(doc);
   const root = doc.documentElement;
 
   const { x: bx, y: by, w: bw, h: bh } = measureContentBox(svgString);
@@ -108,17 +125,28 @@ export function loadCustomIcons(): CustomIconMeta[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    // Drop any malformed/stale entries (e.g. from an older schema) so callers can
+    // rely on every element having the fields they consume.
+    return parsed.filter(
+      (e): e is CustomIconMeta =>
+        !!e &&
+        typeof e === "object" &&
+        typeof (e as CustomIconMeta).name === "string" &&
+        typeof (e as CustomIconMeta).svg === "string"
+    );
   } catch {
     return [];
   }
 }
 
-export function saveCustomIcons(icons: CustomIconMeta[]): void {
+export function saveCustomIcons(icons: CustomIconMeta[]): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(icons));
+    return true;
   } catch {
     // Storage full / unavailable — icons stay session-only.
+    return false;
   }
 }
 

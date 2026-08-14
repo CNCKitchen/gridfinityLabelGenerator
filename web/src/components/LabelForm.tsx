@@ -210,16 +210,19 @@ export function LabelForm({ onGenerate, onPreviewChange, isActive, onActivate }:
       const meta = buildCustomIcon(text, name);
       const next = [...customIcons, meta];
       setCustomIcons(next);
-      saveCustomIcons(next);
-    } catch {
-      setImportError("Could not read the SVG file.");
+      if (!saveCustomIcons(next)) setImportError("Could not save the icon to this browser.");
+    } catch (err) {
+      // surface the specific markup error; everything else here is a read/parse issue
+      setImportError(err instanceof Error && err.message === "Invalid SVG markup"
+        ? "Invalid SVG markup."
+        : "Could not read the SVG file.");
     }
   };
 
   const handleRemoveIcon = (id: string) => {
     const next = removeCustomIcon(customIcons, id);
     setCustomIcons(next);
-    saveCustomIcons(next);
+    if (!saveCustomIcons(next)) setImportError("Could not save changes to this browser.");
   };
 
   const handleCopyIcon = (name: string) => {

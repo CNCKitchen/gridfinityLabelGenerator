@@ -60,14 +60,15 @@ export function PredefinedSelector({ labels, onGenerate, onPreviewChange, isActi
   const [useWrenchSize, setUseWrenchSize] = useState(false);
   const [useImageLine2, setUseImageLine2] = useState(false);
 
-  // Fire preview with M3 fixture only when the user actually changes a checkbox option
-  // (skip the initial mount so the custom-form preview wins on page load)
-  const isFirstMount = useRef(true);
+  // Fire a preview (with the M3 fixture) only when the user actually changes a
+  // checkbox option — never on mount, so the custom form's preview wins on page
+  // load. Compare against the previous values instead of a first-render ref,
+  // which React StrictMode's effect double-invoke defeats.
+  const prevOptions = useRef({ wrench: useWrenchSize, img: useImageLine2 });
   useEffect(() => {
-    if (isFirstMount.current) {
-      isFirstMount.current = false;
-      return;
-    }
+    const changed = prevOptions.current.wrench !== useWrenchSize || prevOptions.current.img !== useImageLine2;
+    prevOptions.current = { wrench: useWrenchSize, img: useImageLine2 };
+    if (!changed) return;
     if (!onPreviewChange) return;
     let preview: PredefinedLabel = { ...M3_PREVIEW_BASE };
     if (useWrenchSize && preview.wrenchSize) {

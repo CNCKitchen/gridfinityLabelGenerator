@@ -1,0 +1,128 @@
+import type { HAlign, TextFormat, VAlign } from "../types/label";
+
+/** A single Gridfinity tile is 37.8 mm wide; each additional tile adds 42 mm. */
+const TILE_WIDTH = 37.8;
+const TILE_STEP = 42;
+
+export const DEFAULT_TEXT_FORMAT: TextFormat = {
+  autoSize: true,
+  hAlign: "center",
+  vAlign: "center",
+};
+
+export function labelPhysicalWidth(labelWidth: number): number {
+  return TILE_WIDTH + (labelWidth - 1) * TILE_STEP;
+}
+
+/** Extra millimetres added to the label for a 2×/3× width. */
+export function labelExtraWidth(labelWidth: number): number {
+  return (labelWidth - 1) * TILE_STEP;
+}
+
+/**
+ * Extends a text box's right edge by `extraWidth` (label grows to the right;
+ * the icon/left column keeps its size). Used to give 2×/3× labels genuinely
+ * more text space instead of just centring fixed-size content.
+ */
+export function extendRectRight(
+  rect: { x1: number; y1: number; x2: number; y2: number },
+  extraWidth: number
+): { x1: number; y1: number; x2: number; y2: number } {
+  return { ...rect, x2: rect.x2 + extraWidth };
+}
+
+/** X-offset that places a box of width textW inside a box of width boxW. */
+export function hAlignOffset(h: HAlign, boxW: number, textW: number): number {
+  switch (h) {
+    case "left":
+      return 0;
+    case "right":
+      return boxW - textW;
+    default:
+      return (boxW - textW) / 2;
+  }
+}
+
+/**
+ * Y-offset that places a block of height `textH` inside a box of height boxH.
+ * `yUp`: true → 3D/STL coordinate (Y grows upward); false → SVG (Y grows downward).
+ */
+export function vAlignOffset(v: VAlign, boxH: number, textH: number, yUp: boolean): number {
+  const center = (boxH - textH) / 2;
+  if (yUp) {
+    switch (v) {
+      case "top":
+        return boxH - textH;
+      case "bottom":
+        return 0;
+      default:
+        return center;
+    }
+  }
+  switch (v) {
+    case "top":
+      return 0;
+    case "bottom":
+      return boxH - textH;
+    default:
+      return center;
+  }
+}
+
+/** Clamp a manually typed font size into [min, max] so it never overflows the label. */
+export function clampManualSize(size: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.round(size * 10) / 10));
+}
+
+// ---- Preview/text box layout (shared by the preview and the manual-size cap) ----
+// These are the SVG-preview box definitions (mm). The STL exporter keeps its own
+// equivalent set — keep the two in sync when a line's box changes.
+
+export interface Box2 {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+// Canonical horizontal text-box geometry, defined once in SVG-mm (the preview
+// coordinate space). The STL exporter derives its own (world) boxes from these
+// by subtracting its 1.5 mm origin offset — see labelGenerator.buildTextMeshes.
+// Keeping a single source avoids preview≠STL drift in fitted text size.
+export const ICON_AREA_X_SVG = 3.0; // left edge of the (large) symbol/icon row
+export const TEXT_ICON_GAP = 1.0; // gap between the icon row and the text lines
+export const TEXT_RIGHT_EDGE_SVG = 34.8; // right edge all text boxes share (37.8 - margin)
+
+// Vertical line-box geometry (SVG-mm, Y grows downward). Shared with the STL
+// exporter so the single-line vs two-line split stays identical in both renderers.
+export const LINE1_TOP_Y = 1.0; // top of the text area
+export const SINGLE_LINE_HEIGHT = 9.5; // full text height when only one line is present
+export const TWO_LINE_HEIGHT = 4.25; // per-line height when both lines are present
+export const LINE2_TOP_Y = 6.25; // top of line 2 when both lines are present
+
+/** Left edge (SVG-mm) of the text lines given the left icon-row width. */
+export function textLineStartSvg(iconRowWidth: number): number {
+  return iconRowWidth > 0 ? ICON_AREA_X_SVG + iconRowWidth + TEXT_ICON_GAP : ICON_AREA_X_SVG;
+}
+
+/**
+ * Resolves the effective rendering box for line 1 and line 2 of a label.
+ * `iconRowWidth` is the horizontal extent (mm) of the large icon/symbol row on
+ * the left (0 when there is none) — the text boxes shift right accordingly.
+ * `extra` width from 2×/3× is given to the text boxes; a missing line2/line1
+ * gets the full-height single box. Used to size text and bound the manual size.
+ */
+export function resolveLineBoxes(
+  labelWidth: number,
+  iconRowWidth: number,
+  hasLine1: boolean,
+  hasLine2: boolean
+): { line1: Box2; line2: Box2 } {
+  const extra = labelExtraWidth(labelWidth);
+  const startX = textLineStartSvg(iconRowWidth);
+  const width = TEXT_RIGHT_EDGE_SVG - startX + extra;
+  const box = (y: number, h: number): Box2 => ({ x: startX, y, w: width, h });
+  const line1 = !hasLine2 ? box(LINE1_TOP_Y, SINGLE_LINE_HEIGHT) : box(LINE1_TOP_Y, TWO_LINE_HEIGHT);
+  const line2 = !hasLine1 ? box(LINE1_TOP_Y, SINGLE_LINE_HEIGHT) : box(LINE2_TOP_Y, TWO_LINE_HEIGHT);
+  return { line1, line2 };
+}

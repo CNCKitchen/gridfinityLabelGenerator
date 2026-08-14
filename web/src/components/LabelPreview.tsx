@@ -1,40 +1,50 @@
-import type { LabelInput } from "../types/label";
+import { useEffect, useMemo, useState } from "react";
+import type { ImageAsset, LabelInput, TextFormat } from "../types/label";
+import {
+  clampManualSize,
+  DEFAULT_TEXT_FORMAT,
+  hAlignOffset,
+  labelExtraWidth,
+  labelPhysicalWidth,
+  resolveLineBoxes,
+  vAlignOffset,
+  type Box2,
+} from "../services/geometry";
+import { BUILTIN_IMAGES } from "../services/imageRegistry";
+import {
+  ensureTextFont,
+  layoutComposed,
+  maxFittingSizeComposed,
+  parseLineTemplate,
+  textToSvgPath,
+  type LineToken,
+} from "../services/textMetrics";
 
 // Label DXF paths extracted from label.svg (Inkscape DXF export, 96 dpi).
 // LABEL_TRANSFORM maps local px → overlay mm (0..37.8 × 0..11.5):
 //   scale(0.264583) translate(137.19, -1120.59)
-// Local extents: x -137.19..5.67 (37.8mm), y 1120.59..1164.06 (11.5mm)
 const LABEL_TRANSFORM = "scale(0.264583) translate(137.19, -1120.59)";
 
-// The screw SVG (screw_lowHead.svg) has an A4-sized viewBox (793×1122).
-// The actual screw path occupies approx x:34.72..110.31, y:19.17..34.29 (75.6×15.1px ≈ 5:1 AR).
-// This viewBox crops to that area with a small margin, matching LINE2_BOX AR (~5:1).
-const SCREW_SVG_VIEWBOX = "32.4 18.7 80.2 16";
-
-// Full label coordinate space (0..37.8 × 0..11.5 mm), derived from STL bounding box.
-// SVG Y increases downward; 3D Y increases upward — boxes are pre-flipped.
-const LABEL_W = 37.8;
+// Full label coordinate space (0..LABEL_BASE_W × 0..11.5 mm), SVG Y downward.
+const LABEL_BASE_W = 37.8;
 const LABEL_H = 11.5;
 
-const ICON_BOX  = { x: 3.0,  y: 1.0,  w: 9.5,  h: 9.5  };
-const LINE1_BOX = { x: 13.5, y: 1.0,  w: 21.3, h: 4.25 }; // top half
-const LINE2_BOX = { x: 13.5, y: 6.25, w: 21.3, h: 4.25 }; // bottom half
-const FULL_LINE1_BOX = { x: 3.0, y: 1.0, w: 31.8, h: 4.25 };
-const FULL_LINE2_BOX = { x: 3.0, y: 6.25, w: 31.8, h: 4.25 };
-// When only one text line is used it may span the label's full height
-const SINGLE_LINE_BOX      = { x: 13.5, y: 1.0, w: 21.3, h: 9.5 };
-const FULL_SINGLE_LINE_BOX = { x: 3.0,  y: 1.0, w: 31.8, h: 9.5 };
+// The screw SVG (screw_lowHead.svg) has an A4-sized viewBox (793×1122).
+const SCREW_SVG_VIEWBOX = "32.4 18.7 80.2 16";
 
-// Outer viewBox adds 1mm margin on all sides so the label outline stroke isn't clipped
-const VB_MARGIN = 1;
-const VB = `${-VB_MARGIN} ${-VB_MARGIN} ${LABEL_W + VB_MARGIN * 2} ${LABEL_H + VB_MARGIN * 2}`;
+// Legacy fixed icon box (catalog labels that pass iconSvg/iconText).
+const LEGACY_ICON_BOX = { x: 3.0, y: 1.0, w: 9.5, h: 9.5 };
+// The large left icon row renders its icons at this height (from `${...}` refs).
+const ICON_AREA_H = 9.5;
+const LEGACY_ICON_WIDTH = 9.5;
 
 const FONT = "Arial, 'Helvetica Neue', Helvetica, sans-serif";
 const ICON_GAP = 0.4; // mm between TX and number halves — keeps them visually tight
 
-function fittingFontSize(text: string, maxW: number, maxH: number): number {
-  const len = text.length || 1;
-  return Math.min((maxW * 1.7) / len, maxH);
+// Fallback used only until the measured font size resolves (brief flash).
+function fittingFontSize(tokens: LineToken[], maxW: number, maxH: number): number {
+  const chars = tokens.reduce((n, t) => n + (t.type === "text" ? t.text.length : 8), 0) || 1;
+  return Math.max(1.2, Math.min((maxW * 1.7) / chars, maxH));
 }
 
 interface LabelPreviewProps {
@@ -42,8 +52,49 @@ interface LabelPreviewProps {
 }
 
 export function LabelPreview({ label }: LabelPreviewProps) {
+  const labelWidth = label?.labelWidth ?? 1;
+  const extraW = labelExtraWidth(labelWidth);
+  const labelW = labelPhysicalWidth(labelWidth);
+
+  const registry = label?.icons ?? BUILTIN_IMAGES;
+  const hasLegacyIcon = !!(label?.iconSvg || label?.iconText);
+  const symbolTokens = useMemo(() => (label?.symbol ? parseLineTemplate(label.symbol) : []), [label?.symbol]);
+  const hasSymbol = !!(label?.symbol && label.symbol.trim());
+
+  // The icon-row width for a text-bearing symbol depends on measured glyphs, so
+  // recompute it once the font is ready (the sync memo is stale before that).
+  const [fontReady, setFontReady] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    ensureTextFont().then(() => alive && setFontReady(true)).catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Effective boxes + sizes. The left icon-row width shifts the text boxes.
+  const iconRowWidth = useMemo(() => {
+    if (label?.symbol && label.symbol.trim()) return layoutComposed(symbolTokens, ICON_AREA_H, registry).totalWidth;
+    return hasLegacyIcon ? LEGACY_ICON_WIDTH : 0;
+  }, [symbolTokens, registry, label?.symbol, hasLegacyIcon, fontReady]);
+
+  const hasLine1 = !!label?.line1?.trim();
+  const line2Enabled = label ? label.line2Enabled !== false : true;
+  const hasLine2 = line2Enabled && !!(label && (label.line2Svg || label.line2.trim()));
+  const boxes = resolveLineBoxes(labelWidth, iconRowWidth, hasLine1, hasLine2);
+  const line1Tokens = useMemo(() => parseLineTemplate(label?.line1 ?? ""), [label?.line1]);
+  const line2Tokens = useMemo(() => parseLineTemplate(label?.line2 ?? ""), [label?.line2]);
+  const line1Size = useResolvedComposedSize(line1Tokens, boxes.line1, label?.line1Format, registry);
+  const line2Size = useResolvedComposedSize(line2Tokens, boxes.line2, label?.line2Format, registry);
+
+  // Outer viewBox adds 1mm margin on all sides so the label outline stroke isn't clipped
+  const VB_MARGIN = 1;
+  const VB = `${-VB_MARGIN} ${-VB_MARGIN} ${labelW + VB_MARGIN * 2} ${LABEL_H + VB_MARGIN * 2}`;
+
+  // Stretch factor for the fixed body outline (see note in resolveLineBoxes).
+  const bodyScaleX = labelW / LABEL_BASE_W;
+
   function renderLabelShape() {
-    // Paths from label.svg, scaled to overlay mm via:  scale(0.264583) translate(137.19, -1120.59)
     return (
       <g transform={LABEL_TRANSFORM} strokeLinecap="round" strokeLinejoin="round">
         {/* Outer body (main rectangle + side tabs) */}
@@ -80,17 +131,28 @@ export function LabelPreview({ label }: LabelPreviewProps) {
   function renderIcon() {
     if (!label) return null;
 
+    // Large left symbol/icon row, defined by a template like "${Hex}".
+    if (hasSymbol) {
+      return renderComposedLine(
+        symbolTokens,
+        { x: 3.0, y: 1.0, w: iconRowWidth, h: ICON_AREA_H },
+        { autoSize: true, hAlign: "left", vAlign: "center" },
+        ICON_AREA_H,
+        registry
+      );
+    }
+
     if (label.iconText) {
       const match = label.iconText.match(/^([A-Za-z]+)(\d+.*)$/);
       const parts = match ? [match[1], match[2]] : [label.iconText];
-      const partH = (ICON_BOX.h - (parts.length > 1 ? ICON_GAP : 0)) / parts.length;
+      const partH = (LEGACY_ICON_BOX.h - (parts.length > 1 ? ICON_GAP : 0)) / parts.length;
       return parts.map((part, i) => {
-        const partY = ICON_BOX.y + i * (partH + ICON_GAP);
-        const fs = Math.min((ICON_BOX.w * 1.7) / (part.length || 1), partH);
+        const partY = LEGACY_ICON_BOX.y + i * (partH + ICON_GAP);
+        const fs = Math.min((LEGACY_ICON_BOX.w * 1.7) / (part.length || 1), partH);
         return (
           <text
             key={i}
-            x={ICON_BOX.x + ICON_BOX.w / 2}
+            x={LEGACY_ICON_BOX.x + LEGACY_ICON_BOX.w / 2}
             y={partY + partH / 2}
             textAnchor="middle"
             dominantBaseline="central"
@@ -110,10 +172,10 @@ export function LabelPreview({ label }: LabelPreviewProps) {
       if (label.iconViewBox) {
         return (
           <svg
-            x={ICON_BOX.x}
-            y={ICON_BOX.y}
-            width={ICON_BOX.w}
-            height={ICON_BOX.h}
+            x={LEGACY_ICON_BOX.x}
+            y={LEGACY_ICON_BOX.y}
+            width={LEGACY_ICON_BOX.w}
+            height={LEGACY_ICON_BOX.h}
             viewBox={label.iconViewBox}
             preserveAspectRatio="xMidYMid meet"
           >
@@ -136,10 +198,10 @@ export function LabelPreview({ label }: LabelPreviewProps) {
       return (
         <image
           href={`data:image/svg+xml;charset=utf-8,${encoded}`}
-          x={ICON_BOX.x}
-          y={ICON_BOX.y}
-          width={ICON_BOX.w}
-          height={ICON_BOX.h}
+          x={LEGACY_ICON_BOX.x}
+          y={LEGACY_ICON_BOX.y}
+          width={LEGACY_ICON_BOX.w}
+          height={LEGACY_ICON_BOX.h}
           preserveAspectRatio="xMidYMid meet"
           filter="url(#lp-to-white)"
         />
@@ -150,59 +212,23 @@ export function LabelPreview({ label }: LabelPreviewProps) {
   }
 
   function renderLine1() {
-    if (!label?.line1) return null;
-    const hasIcon = !!(label.iconSvg || label.iconText);
-    const isOnlyLine = !label.line2 && !label.line2Svg;
-    const box = isOnlyLine
-      ? hasIcon
-        ? SINGLE_LINE_BOX
-        : FULL_SINGLE_LINE_BOX
-      : hasIcon
-        ? LINE1_BOX
-        : FULL_LINE1_BOX;
-
-    const fs = fittingFontSize(label.line1, box.w, box.h);
-
-    return (
-      <text
-        x={box.x + box.w / 2}
-        y={box.y + box.h / 2}
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontSize={fs}
-        fill="#e2e8f0"
-        fontWeight="bold"
-        fontFamily={FONT}
-      >
-        {label.line1}
-      </text>
-    );
+    if (!label?.line1 || line1Size == null) return null;
+    return renderComposedLine(line1Tokens, boxes.line1, label.line1Format, line1Size, registry);
   }
 
   function renderLine2() {
     if (!label) return null;
-    const hasIcon = !!(label.iconSvg || label.iconText);
-    const isOnlyLine = !label.line1;
-
+    if (!hasLine2) return null;
     if (label.line2Svg) {
-      const svgBox = isOnlyLine
-        ? hasIcon
-          ? SINGLE_LINE_BOX
-          : FULL_SINGLE_LINE_BOX
-        : hasIcon
-          ? LINE2_BOX
-          : FULL_LINE2_BOX;
-      // Use a nested <svg> with a viewBox cropped to the actual content area.
-      // label.line2ViewBox overrides the default SCREW_SVG_VIEWBOX for TRP images.
-      const vb = label.line2ViewBox ?? SCREW_SVG_VIEWBOX;
       const encoded = encodeURIComponent(label.line2Svg);
+      const box = boxes.line2;
       return (
         <svg
-          x={svgBox.x}
-          y={svgBox.y}
-          width={svgBox.w}
-          height={svgBox.h}
-          viewBox={vb}
+          x={box.x}
+          y={box.y}
+          width={box.w}
+          height={box.h}
+          viewBox={label.line2ViewBox ?? SCREW_SVG_VIEWBOX}
           preserveAspectRatio="xMidYMid meet"
         >
           <defs>
@@ -221,47 +247,18 @@ export function LabelPreview({ label }: LabelPreviewProps) {
         </svg>
       );
     }
-
-    if (!label.line2) return null;
-    const box = isOnlyLine
-      ? hasIcon
-        ? SINGLE_LINE_BOX
-        : FULL_SINGLE_LINE_BOX
-      : hasIcon
-        ? LINE2_BOX
-        : FULL_LINE2_BOX;
-
-    const fs = fittingFontSize(label.line2, box.w, box.h);
-
-    return (
-      <text
-        x={box.x + box.w / 2}
-        y={box.y + box.h / 2}
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontSize={fs}
-        fill="#e2e8f0"
-        fontWeight="bold"
-        fontFamily={FONT}
-      >
-        {label.line2}
-      </text>
-    );
+    if (!label.line2 || line2Size == null) return null;
+    return renderComposedLine(line2Tokens, boxes.line2, label.line2Format, line2Size, registry);
   }
 
   return (
-    <svg
-      className="preview-svg"
-      viewBox={VB}
-      xmlns="http://www.w3.org/2000/svg"
-    >
+    <svg className="preview-svg" viewBox={VB} xmlns="http://www.w3.org/2000/svg">
       <defs>
-        {/* Safari-compatible white filter for SVG <image> elements */}
         <filter id="lp-to-white">
           <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0" />
         </filter>
       </defs>
-      {renderLabelShape()}
+      <g transform={`scale(${bodyScaleX}, 1)`}>{renderLabelShape()}</g>
       {renderIcon()}
       {renderLine1()}
       {renderLine2()}
@@ -269,3 +266,99 @@ export function LabelPreview({ label }: LabelPreviewProps) {
   );
 }
 
+/**
+ * Resolves the effective font size for a template line: the biggest size whose
+ * whole composed chain (text ink + inline images + spaces) fits the box (== the
+ * STL auto-size), or the manual size clamped to that same limit. Async.
+ */
+function useResolvedComposedSize(
+  tokens: LineToken[],
+  box: Box2,
+  format: TextFormat | undefined,
+  registry: ImageAsset[]
+): number | null {
+  const [size, setSize] = useState<number | null>(null);
+  const regKey = useMemo(() => registry.map((a) => a.id).join("|"), [registry]);
+  useEffect(() => {
+    let alive = true;
+    if (tokens.length === 0) {
+      setSize(null);
+      return;
+    }
+    const w = box.w;
+    const h = box.h;
+    (async () => {
+      let auto: number;
+      try {
+        auto = await maxFittingSizeComposed(tokens, w, h, registry);
+      } catch {
+        auto = fittingFontSize(tokens, w, h);
+      }
+      if (!alive) return;
+      if (!format || format.autoSize !== false) {
+        setSize(auto);
+      } else {
+        setSize(clampManualSize(format.fontSize ?? auto, 1.2, auto));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // regKey (stable, content-derived) rather than the registry reference: custom
+    // icons are immutable, so a new id always signals changed geometry.
+  }, [tokens, box.w, box.h, format?.autoSize, format?.fontSize, regKey]);
+  return size;
+}
+
+/**
+ * Renders a template string as a row of text glyph paths and inline `${Name}`
+ * images, laid out with the shared textMetrics module so it matches the STL:
+ * same advance/width (spaces preserved), icons the same size as the glyphs, all
+ * tokens centred on the content's vertical centre.
+ */
+function renderComposedLine(
+  tokens: LineToken[],
+  box: Box2,
+  format: TextFormat | undefined,
+  size: number,
+  registry: ImageAsset[]
+) {
+  const layout = layoutComposed(tokens, size, registry);
+  if (!layout.tokens.length) return null;
+  const fmt = format ?? DEFAULT_TEXT_FORMAT;
+  const dx = hAlignOffset(fmt.hAlign, box.w, layout.totalWidth);
+  const dy = vAlignOffset(fmt.vAlign, box.h, layout.contentHeight, false);
+  const centerY = layout.contentHeight / 2;
+
+  const children: import("react").ReactNode[] = [];
+  let cursor = 0;
+  for (const t of layout.tokens) {
+    if (t.type === "text" && t.text && t.ink) {
+      const d = textToSvgPath(t.text.trim(), size);
+      const inkTopY = centerY - t.height / 2;
+      // textToSvgPath already flips y (natural top = -(ink.y+ink.height));
+      // bring that top edge to inkTopY, and the ink left to cursor+prePad.
+      const tx = cursor + t.prePad - t.ink.x;
+      const ty = inkTopY + (t.ink.y + t.ink.height);
+      children.push(<path key={`t${children.length}`} d={d} transform={`translate(${tx} ${ty})`} fill="#e2e8f0" fillRule="evenodd" />);
+    } else if (t.type === "image" && t.asset) {
+      const vb = t.asset.viewBox || "0 0 100 100";
+      const yTop = centerY - t.height / 2;
+      children.push(
+        <svg key={`i${children.length}`} x={cursor} y={yTop} width={t.width} height={t.height} viewBox={vb} preserveAspectRatio="xMidYMid meet">
+          <image
+            href={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(t.asset.svg)}`}
+            x="0"
+            y="0"
+            width="793.70079"
+            height="1122.5197"
+            filter="url(#lp-to-white)"
+          />
+        </svg>
+      );
+    }
+    cursor += t.width; // spaces are already inside t.width (advance)
+  }
+
+  return <g transform={`translate(${box.x + dx} ${box.y + dy})`}>{children}</g>;
+}

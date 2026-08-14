@@ -5,32 +5,48 @@ import {
   Mesh,
   MeshNormalMaterial,
   Shape,
-  ShapeGeometry,
-  ShapePath,
   type BufferGeometry,
 } from "three";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
-import { FontLoader, type Font } from "three/examples/jsm/loaders/FontLoader.js";
-import type { LabelInput } from "../types/label";
+import type { ImageAsset, LabelInput, TextFormat } from "../types/label";
+import {
+  clampManualSize,
+  DEFAULT_TEXT_FORMAT,
+  extendRectRight,
+  hAlignOffset,
+  ICON_AREA_X_SVG,
+  LINE1_TOP_Y,
+  LINE2_TOP_Y,
+  SINGLE_LINE_HEIGHT,
+  TEXT_RIGHT_EDGE_SVG,
+  textLineStartSvg,
+  TWO_LINE_HEIGHT,
+  vAlignOffset,
+} from "./geometry";
+import { BUILTIN_IMAGES } from "./imageRegistry";
+import {
+  ensureTextFont,
+  generateShapesWithTracking,
+  layoutComposed,
+  maxFittingSizeComposed,
+  measureTextBounds,
+  parseLineTemplate,
+  type LineToken,
+} from "./textMetrics";
 
 const EMBOSS_HEIGHT = 0.4;
 
-// Tighter letter spacing: each glyph's horizontal advance is reduced by this
-// factor. Glyphs themselves are unchanged (no squishing), only the gaps between
-// them shrink. The smaller total width lets chooseTextSizeForBox pick a larger
-// font size, making strokes proportionally thicker — important for sliceability.
-const TRACKING = 0.95;
+const ICON_AREA_HEIGHT = 9.5;
+const LEGACY_ICON_WIDTH = 9.5;
+// The STL exports in world/local coordinates whose origin sits 1.5 mm left of
+// the SVG/geometry space (CONTENT_ORIGIN_X = base.min.x + 1.5). The text-box
+// coordinates are derived from the shared SVG constants in geometry.ts by
+// subtracting this offset, so the exported boxes match the preview exactly.
+const STL_SVG_ORIGIN = 1.5;
 
 const SVG_BOX = { x1: 1.5, y1: 0.5, x2: 11, y2: 10 };
-const TEXT_TOP_BOX = { x1: 11, y1: 5.75, x2: 34.5, y2: 10 };
-const TEXT_BOTTOM_BOX = { x1: 11, y1: 0.5, x2: 34.5, y2: 4.75 };
-const TEXT_TOP_BOX_NO_ICON = { x1: 1.5, y1: 5.75, x2: 34.5, y2: 10 };
-const TEXT_BOTTOM_BOX_NO_ICON = { x1: 1.5, y1: 0.5, x2: 34.5, y2: 4.75 };
-// When only one text line is used it may span the label's full height
-const TEXT_SINGLE_BOX = { x1: 11, y1: 0.5, x2: 34.5, y2: 10 };
-const TEXT_SINGLE_BOX_NO_ICON = { x1: 1.5, y1: 0.5, x2: 34.5, y2: 10 };
 
 type Rect = { x1: number; y1: number; x2: number; y2: number };
 
@@ -45,20 +61,16 @@ let baseGeometry: BufferGeometry;
 let topZ: number;
 let CONTENT_ORIGIN_X: number;
 let CONTENT_ORIGIN_Y: number;
-let font: Font;
-
-// Per-call offset: shifts content right to centre it on wider labels
-let contentXOffset = 0;
 
 function ensureInitialized(): Promise<void> {
   if (_init) return _init;
   const base = import.meta.env.BASE_URL;
   _init = (async () => {
-    const [stlResp, fontResp] = await Promise.all([
+    const [stlResp] = await Promise.all([
       fetch(`${base}GridfinityBinLabel.stl`),
-      fetch(`${base}helvetiker_bold.typeface.json`),
+      ensureTextFont(),
     ]);
-    if (!stlResp.ok || !fontResp.ok) {
+    if (!stlResp.ok) {
       throw new Error("Failed to load label assets");
     }
     baseGeometry = stlLoader.parse(await stlResp.arrayBuffer());
@@ -67,60 +79,12 @@ function ensureInitialized(): Promise<void> {
     topZ = bounds.max.z;
     CONTENT_ORIGIN_X = bounds.min.x + 1.5;
     CONTENT_ORIGIN_Y = bounds.min.y + 0.5;
-    font = new FontLoader().parse(await fontResp.json());
   })();
   return _init;
 }
 
 function cloneBaseMesh(): Mesh<BufferGeometry> {
   return new Mesh(baseGeometry.clone(), material);
-}
-
-// Generates Three.js shapes for `text` at `size` with reduced letter spacing.
-// Replicates Three.js FontLoader's internal createPaths logic so we can apply
-// a custom tracking multiplier to each glyph's horizontal advance (ha).
-function generateShapesWithTracking(text: string, size: number): Shape[] {
-  const data = (font as any).data as {
-    resolution: number;
-    glyphs: Record<string, { ha: number; o?: string; _cachedOutline?: string[] }>;
-  };
-  const scale = size / data.resolution;
-  const shapes: Shape[] = [];
-  let offsetX = 0;
-
-  for (const char of text) {
-    const glyph = data.glyphs[char] ?? data.glyphs["?"];
-    if (!glyph) continue;
-
-    if (glyph.o) {
-      const path = new ShapePath();
-      const outline = glyph._cachedOutline ?? (glyph._cachedOutline = glyph.o.split(" "));
-      let i = 0;
-      while (i < outline.length) {
-        const action = outline[i++];
-        if (action === "m") {
-          path.moveTo(+outline[i++] * scale + offsetX, +outline[i++] * scale);
-        } else if (action === "l") {
-          path.lineTo(+outline[i++] * scale + offsetX, +outline[i++] * scale);
-        } else if (action === "q") {
-          // typeface.json order: end x/y then control x/y
-          const ex = +outline[i++] * scale + offsetX, ey = +outline[i++] * scale;
-          const cx = +outline[i++] * scale + offsetX, cy = +outline[i++] * scale;
-          path.quadraticCurveTo(cx, cy, ex, ey);
-        } else if (action === "b") {
-          const ex  = +outline[i++] * scale + offsetX, ey  = +outline[i++] * scale;
-          const c1x = +outline[i++] * scale + offsetX, c1y = +outline[i++] * scale;
-          const c2x = +outline[i++] * scale + offsetX, c2y = +outline[i++] * scale;
-          path.bezierCurveTo(c1x, c1y, c2x, c2y, ex, ey);
-        }
-      }
-      shapes.push(...path.toShapes(false));
-    }
-
-    offsetX += glyph.ha * scale * TRACKING;
-  }
-
-  return shapes;
 }
 
 function toExtrudedMesh(shapes: Shape[], depth: number): Mesh {
@@ -131,16 +95,6 @@ function toExtrudedMesh(shapes: Shape[], depth: number): Mesh {
   });
   geometry.computeVertexNormals();
   return new Mesh(geometry, material);
-}
-
-function getTextBounds(text: string, size: number): Box3 | null {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  const shapes = generateShapesWithTracking(trimmed, size);
-  if (shapes.length === 0) return null;
-  const geometry = new ShapeGeometry(shapes);
-  geometry.computeBoundingBox();
-  return geometry.boundingBox;
 }
 
 function getMeshBounds(mesh: Mesh): Box3 {
@@ -154,9 +108,9 @@ function getBoxSize(box: Rect): { width: number; height: number } {
 
 function toWorldBox(box: Rect): Rect {
   return {
-    x1: CONTENT_ORIGIN_X + contentXOffset + box.x1,
+    x1: CONTENT_ORIGIN_X + box.x1,
     y1: CONTENT_ORIGIN_Y + box.y1,
-    x2: CONTENT_ORIGIN_X + contentXOffset + box.x2,
+    x2: CONTENT_ORIGIN_X + box.x2,
     y2: CONTENT_ORIGIN_Y + box.y2,
   };
 }
@@ -181,7 +135,19 @@ function widenGeometry(geometry: BufferGeometry, extraWidth: number): void {
   geometry.computeVertexNormals();
 }
 
-function buildSvgMeshInBox(svgString: string, box: Rect): Mesh | null {
+/**
+ * Builds an SVG mesh scaled so its drawing fits (preserveAspectRatio="meet")
+ * inside a box of `boxW`×`boxH`, centred with the box's lower-left corner at
+ * `(ox, oy)` and `z` at `oz`. The returned mesh is already positioned.
+ */
+function buildScaledSvgMesh(
+  svgString: string,
+  boxW: number,
+  boxH: number,
+  ox: number,
+  oy: number,
+  oz: number
+): Mesh | null {
   if (!svgString) return null;
   const parsed = svgLoader.parse(svgString);
   const shapes: Shape[] = [];
@@ -196,9 +162,7 @@ function buildSvgMeshInBox(svgString: string, box: Rect): Mesh | null {
   const sourceHeight = sourceBounds.max.y - sourceBounds.min.y;
   if (sourceWidth <= 0 || sourceHeight <= 0) return null;
 
-  const target = toWorldBox(box);
-  const targetSize = getBoxSize(target);
-  const scale = Math.min(targetSize.width / sourceWidth, targetSize.height / sourceHeight);
+  const scale = Math.min(boxW / sourceWidth, boxH / sourceHeight);
 
   // SVG assets use screen coordinates where Y grows downward. Rotate the
   // geometry around X instead of using a negative scale so triangle winding
@@ -210,11 +174,26 @@ function buildSvgMeshInBox(svgString: string, box: Rect): Mesh | null {
   const scaledBounds = getMeshBounds(extruded);
   const scaledWidth = scaledBounds.max.x - scaledBounds.min.x;
   const scaledHeight = scaledBounds.max.y - scaledBounds.min.y;
-  const tx = target.x1 + (targetSize.width - scaledWidth) / 2 - scaledBounds.min.x;
-  const ty = target.y1 + (targetSize.height - scaledHeight) / 2 - scaledBounds.min.y;
+  const tx = ox + (boxW - scaledWidth) / 2 - scaledBounds.min.x;
+  const ty = oy + (boxH - scaledHeight) / 2 - scaledBounds.min.y;
 
-  extruded.position.set(tx, ty, topZ);
+  extruded.position.set(tx, ty, oz);
   return extruded;
+}
+
+function buildSvgMeshInBox(svgString: string, box: Rect): Mesh | null {
+  const target = toWorldBox(box);
+  const targetSize = getBoxSize(target);
+  return buildScaledSvgMesh(svgString, targetSize.width, targetSize.height, target.x1, target.y1, topZ);
+}
+
+/**
+ * Builds an inline SVG mesh fitted into a local box of `boxW`×`boxH` whose
+ * lower-left corner is the origin (0,0). Used for images embedded in a text
+ * line; the caller places the box with extra translations.
+ */
+function buildSvgMeshInLocalBox(svgString: string, boxW: number, boxH: number): Mesh | null {
+  return buildScaledSvgMesh(svgString, boxW, boxH, 0, 0, 0);
 }
 
 function buildIconMesh(iconSvg: string): Mesh | null {
@@ -255,9 +234,9 @@ function chooseTextSizeForBox(text: string, maxWidth: number, maxHeight: number)
   let size = Math.max(6, maxHeight * 1.4);
   const minSize = 1.2;
   while (size > minSize) {
-    const bounds = getTextBounds(text, size);
-    const width = bounds ? bounds.max.x - bounds.min.x : 0;
-    const height = bounds ? bounds.max.y - bounds.min.y : 0;
+    const b = measureTextBounds(text, size);
+    const width = b ? b.width : 0;
+    const height = b ? b.height : 0;
     if (width <= maxWidth && height <= maxHeight) return size;
     size -= 0.1;
   }
@@ -270,7 +249,8 @@ function createTextLineMesh(
   x: number,
   y: number,
   width: number,
-  height: number
+  height: number,
+  format: TextFormat = DEFAULT_TEXT_FORMAT
 ): Mesh | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -297,43 +277,190 @@ function createTextLineMesh(
   const mesh = new Mesh(geometry, material);
   mesh.scale.set(scale, scale, 1);
 
-  const tx = x + (width - scaledWidth) / 2 - bounds.min.x * scale;
-  const ty = y + (height - scaledHeight) / 2 - bounds.min.y * scale;
-  mesh.position.set(tx, ty, topZ - 0.4);
+  // Align within the box (3×3 grid), honoured in 3D (Y-up) space.
+  const hOff = hAlignOffset(format.hAlign, width, scaledWidth);
+  const vOff = vAlignOffset(format.vAlign, height, scaledHeight, true);
+  const tx = x + hOff - bounds.min.x * scale;
+  const ty = y + vOff - bounds.min.y * scale;
+  mesh.position.set(tx, ty, topZ - EMBOSS_HEIGHT);
   return mesh;
 }
 
-function buildTextMeshes(label: LabelInput): Mesh[] {
-  const hasIcon = !!label.iconText || !!label.iconSvg;
-  const hasLine1 = !!label.line1.trim();
-  const hasLine2 = !!label.line2Svg || !!label.line2.trim();
+/**
+ * Effective font size for a (possibly image-bearing) line: auto-fit by default,
+ * manual clamped to the same composed fit maximum. The registry resolves any
+ * `${Name}` references so images count against the box width.
+ */
+async function effectiveComposedSize(
+  tokens: LineToken[],
+  boxW: number,
+  boxH: number,
+  format: TextFormat | undefined,
+  registry: ImageAsset[]
+): Promise<number> {
+  const auto = await maxFittingSizeComposed(tokens, boxW, boxH, registry);
+  if (!format || format.autoSize !== false) return auto;
+  return clampManualSize(format.fontSize ?? auto, 1.2, auto);
+}
 
-  // The only present line gets the label's full height
-  const topRect = !hasLine2
-    ? (hasIcon ? TEXT_SINGLE_BOX : TEXT_SINGLE_BOX_NO_ICON)
-    : (hasIcon ? TEXT_TOP_BOX : TEXT_TOP_BOX_NO_ICON);
-  const bottomRect = !hasLine1
-    ? (hasIcon ? TEXT_SINGLE_BOX : TEXT_SINGLE_BOX_NO_ICON)
-    : (hasIcon ? TEXT_BOTTOM_BOX : TEXT_BOTTOM_BOX_NO_ICON);
+/**
+ * Width (mm) of the large symbol/icon row on the left, which shifts the text
+ * lines right. Computed from the symbol template at the large icon size; falls
+ * back to the fixed legacy width when the label uses `iconSvg`/`iconText`.
+ */
+function computeIconRowWidth(label: LabelInput, registry: ImageAsset[]): number {
+  if (label.symbol && label.symbol.trim()) {
+    const tokens = parseLineTemplate(label.symbol);
+    if (tokens.length === 0) return 0;
+    return layoutComposed(tokens, ICON_AREA_HEIGHT, registry).totalWidth;
+  }
+  if (label.iconSvg || label.iconText) return LEGACY_ICON_WIDTH;
+  return 0;
+}
+
+/**
+ * Builds the meshes for one composed line (text runs + inline images) and
+ * places them in `box` honouring the 3×3 alignment grid. Tokens are centred on
+ * the content's vertical centre so icons read aligned with the text. The layout
+ * comes from the shared textMetrics module so the STL and preview match exactly.
+ * Returns null when there is nothing to draw.
+ */
+function buildComposedLineGroup(
+  tokens: LineToken[],
+  size: number,
+  box: Rect,
+  format: TextFormat | undefined,
+  registry: ImageAsset[]
+): Group | null {
+  const layout = layoutComposed(tokens, size, registry);
+  if (layout.tokens.length === 0) return null;
+
+  const fmt = format ?? DEFAULT_TEXT_FORMAT;
+  const boxW = box.x2 - box.x1;
+  const boxH = box.y2 - box.y1;
+  const hOff = hAlignOffset(fmt.hAlign, boxW, layout.totalWidth);
+  const vOff = vAlignOffset(fmt.vAlign, boxH, layout.contentHeight, true);
+
+  const group = new Group();
+  group.position.set(box.x1 + hOff, box.y1 + vOff, 0);
+
+  const z = topZ - EMBOSS_HEIGHT; // content sits on the label surface (top at topZ)
+  const centerY = layout.contentHeight / 2;
+  let cursor = 0;
+  for (const t of layout.tokens) {
+    if (t.type === "text" && t.text && t.ink) {
+      const shapes = generateShapesWithTracking(t.text.trim(), size);
+      if (shapes.length > 0) {
+        const geometry = new ExtrudeGeometry(shapes, { depth: EMBOSS_HEIGHT, bevelEnabled: false, curveSegments: 10 });
+        geometry.computeBoundingBox();
+        const b = geometry.boundingBox;
+        if (b) {
+          const mesh = new Mesh(geometry, material);
+          const inkCenterY = b.min.y + (b.max.y - b.min.y) / 2;
+          // Ink left edge at cursor+prePad; ink centre centred on the line.
+          mesh.position.set((cursor + t.prePad) - b.min.x, centerY - inkCenterY, z);
+          group.add(mesh);
+        }
+      }
+    } else if (t.type === "image" && t.asset) {
+      const mesh = buildSvgMeshInLocalBox(t.asset.svg, t.width, t.height);
+      if (mesh) {
+        // Centre the image box on the line; the fit-in-box keeps its aspect.
+        mesh.position.x += cursor;
+        mesh.position.y += centerY - t.height / 2;
+        // Icons (SVG, geometry flipped by rotateX) sit at the surface top exactly
+        // like the legacy icon box: z = topZ. Text (helvetiker shapes) uses
+        // topZ - EMBOSS_HEIGHT. Mixing z here sinks icons below the print face.
+        mesh.position.z = topZ;
+        group.add(mesh);
+      }
+    }
+    cursor += t.width; // spaces (incl. prePad/postPad) are already in t.width
+  }
+  return group.children.length > 0 ? group : null;
+}
+
+/** Builds the meshes for the large symbol/icon row on the far left (or legacy). */
+function buildIconRowMeshes(label: LabelInput, registry: ImageAsset[]): (Mesh | Group)[] {
+  if (label.symbol && label.symbol.trim()) {
+    const tokens = parseLineTemplate(label.symbol);
+    const width = layoutComposed(tokens, ICON_AREA_HEIGHT, registry).totalWidth;
+    if (width <= 0) return [];
+    const box: Rect = {
+      x1: CONTENT_ORIGIN_X + (ICON_AREA_X_SVG - STL_SVG_ORIGIN),
+      y1: CONTENT_ORIGIN_Y + 0.5,
+      x2: CONTENT_ORIGIN_X + (ICON_AREA_X_SVG - STL_SVG_ORIGIN) + width,
+      y2: CONTENT_ORIGIN_Y + 0.5 + ICON_AREA_HEIGHT,
+    };
+    const g = buildComposedLineGroup(tokens, ICON_AREA_HEIGHT, box, { autoSize: true, hAlign: "left", vAlign: "center" }, registry);
+    return g ? [g] : [];
+  }
+  if (label.iconText) {
+    return buildIconTextMeshes(label.iconText);
+  }
+  const iconMesh = buildIconMesh(label.iconSvg);
+  return iconMesh ? [iconMesh] : [];
+}
+
+async function buildTextMeshes(
+  label: LabelInput,
+  registry: ImageAsset[],
+  extraWidth: number
+): Promise<(Mesh | Group)[]> {
+  const iconW = computeIconRowWidth(label, registry);
+  const hasLine1 = !!label.line1.trim();
+  const line2Enabled = label.line2Enabled !== false;
+  const hasLine2 = line2Enabled && (!!label.line2Svg || !!label.line2.trim());
+
+  // Text boxes are the shared SVG geometry (geometry.resolveLineBoxes) shifted
+  // into the STL origin space, so the export matches the preview exactly.
+  const left = textLineStartSvg(iconW) - STL_SVG_ORIGIN;
+  const right = TEXT_RIGHT_EDGE_SVG - STL_SVG_ORIGIN;
+
+  // Y is flipped by 0.5 from the SVG space; the box verticals reuse the shared
+  // geometry constants so the single-line/two-line split can't drift apart.
+  const stlY = (svgY: number): number => svgY - 0.5;
+  // The only present line gets the label's full height. Boxes are widened by
+  // extraWidth so 2×/3× labels get genuinely more text room.
+  const topRect = extendRectRight(
+    !hasLine2
+      ? { x1: left, y1: stlY(LINE1_TOP_Y), x2: right, y2: stlY(LINE1_TOP_Y + SINGLE_LINE_HEIGHT) }
+      : { x1: left, y1: stlY(LINE2_TOP_Y), x2: right, y2: stlY(LINE2_TOP_Y + TWO_LINE_HEIGHT) },
+    extraWidth
+  );
+  const bottomRect = extendRectRight(
+    !hasLine1
+      ? { x1: left, y1: stlY(LINE1_TOP_Y), x2: right, y2: stlY(LINE1_TOP_Y + SINGLE_LINE_HEIGHT) }
+      : { x1: left, y1: stlY(LINE1_TOP_Y), x2: right, y2: stlY(LINE1_TOP_Y + TWO_LINE_HEIGHT) },
+    extraWidth
+  );
 
   const topBox = toWorldBox(topRect);
   const bottomBox = toWorldBox(bottomRect);
   const topSize = getBoxSize(topBox);
   const bottomSize = getBoxSize(bottomBox);
 
-  const meshes: Mesh[] = [];
+  const meshes: (Mesh | Group)[] = [];
 
-  const topFontSize = chooseTextSizeForBox(label.line1, topSize.width, topSize.height);
-  const line1Mesh = createTextLineMesh(label.line1, topFontSize, topBox.x1, topBox.y1, topSize.width, topSize.height);
-  if (line1Mesh) meshes.push(line1Mesh);
+  const tokens1 = parseLineTemplate(label.line1);
+  if (tokens1.length > 0) {
+    const size1 = await effectiveComposedSize(tokens1, topSize.width, topSize.height, label.line1Format, registry);
+    const g = buildComposedLineGroup(tokens1, size1, topBox, label.line1Format, registry);
+    if (g) meshes.push(g);
+  }
 
-  if (label.line2Svg) {
-    const line2Mesh = buildSvgMeshInBox(label.line2Svg, bottomRect);
-    if (line2Mesh) meshes.push(line2Mesh);
-  } else {
-    const bottomFontSize = chooseTextSizeForBox(label.line2, bottomSize.width, bottomSize.height);
-    const line2Mesh = createTextLineMesh(label.line2, bottomFontSize, bottomBox.x1, bottomBox.y1, bottomSize.width, bottomSize.height);
-    if (line2Mesh) meshes.push(line2Mesh);
+  if (hasLine2) {
+    if (label.line2Svg) {
+      const line2Mesh = buildSvgMeshInBox(label.line2Svg, bottomRect);
+      if (line2Mesh) meshes.push(line2Mesh);
+    } else {
+      const tokens2 = parseLineTemplate(label.line2);
+      if (tokens2.length > 0) {
+        const size2 = await effectiveComposedSize(tokens2, bottomSize.width, bottomSize.height, label.line2Format, registry);
+        const g = buildComposedLineGroup(tokens2, size2, bottomBox, label.line2Format, registry);
+        if (g) meshes.push(g);
+      }
+    }
   }
 
   return meshes;
@@ -349,22 +476,18 @@ export async function generateLabelStl(label: LabelInput): Promise<ArrayBuffer> 
 
   const width = label.labelWidth ?? 1;
   const extraWidth = (width - 1) * 42;
-  // Centre the marking on the expanded label
-  contentXOffset = extraWidth / 2;
+  // Width-scaled text boxes carry the extra room; content is left-anchored
+  // (icon at far left) instead of centred into a fixed-size block.
 
   const baseMesh = cloneBaseMesh();
   if (extraWidth > 0) widenGeometry(baseMesh.geometry, extraWidth);
 
+  const registry = label.icons ?? BUILTIN_IMAGES;
+
   const root = new Group();
   root.add(baseMesh);
-  if (label.iconText) {
-    for (const m of buildIconTextMeshes(label.iconText)) root.add(m);
-  }  
-  else {
-    const iconMesh = buildIconMesh(label.iconSvg);
-    if (iconMesh) root.add(iconMesh);
-  }
-  for (const textMesh of buildTextMeshes(label)) {
+  for (const m of buildIconRowMeshes(label, registry)) root.add(m);
+  for (const textMesh of await buildTextMeshes(label, registry, extraWidth)) {
     root.add(textMesh);
   }
   root.updateMatrixWorld(true);

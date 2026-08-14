@@ -338,48 +338,216 @@ button:disabled {
 }
 
 .symbol-picker {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
   gap: 8px;
 }
 
 .symbol-item {
   margin-top: 0;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px;
-  width: 76px;
+  padding: 8px 4px;
   background: #0f172a;
   border: 2px solid #334155;
   border-radius: 8px;
-  cursor: pointer;
   color: #94a3b8;
   font-size: 12px;
   font-weight: 400;
   transition: border-color 0.1s, color 0.1s;
+  overflow: hidden;
 }
-
-.symbol-item img {
-  width: 40px;
-  height: 40px;
-  object-fit: contain;
-  filter: invert(1);
-}
-
-.symbol-item:hover:not(.selected) {
+.symbol-item:hover {
   border-color: #64748b;
   color: #e2e8f0;
 }
-
-.symbol-item.selected {
-  border-color: #22c55e;
-  color: #e2e8f0;
+.symbol-select {
+  all: unset;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.symbol-select:focus-visible {
+  /* all: unset wiped the browser's default focus ring — restore a visible one */
+  outline: 2px solid #22c55e;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+.sym-thumb {
+  width: 38px;
+  height: 38px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sym-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: invert(1);
+}
+.symbol-name {
+  width: 100%;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 @media (max-width: 800px) {
   .layout {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---- Per-line text formatting (TextFormatControls) ---- */
+.format-controls {
+  background: #16233a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.format-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+}
+.format-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.size-row {
+  justify-content: space-between;
+}
+.inline-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.size-input {
+  width: 72px;
+}
+.align-row {
+  gap: 8px;
+}
+.align-axis {
+  font-size: 11px;
+  color: #64748b;
+  width: 12px;
+}
+.align-grid {
+  display: flex;
+  gap: 3px;
+}
+.align-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  border-radius: 6px;
+}
+.align-btn:hover:not(.active) {
+  border-color: #64748b;
+  color: #e2e8f0;
+}
+.align-btn.active {
+  border-color: #22c55e;
+  color: #e2e8f0;
+}
+
+/* ---- Custom imported icons (gallery) ---- */
+.symbol-remove {
+  position: absolute;
+  /* Inside the padding box so it isn't clipped by .symbol-item's overflow:hidden
+     (which must stay for the two-line name truncation). */
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  background: #7f1d1d;
+  border: 1px solid #ef4444;
+  color: #fecaca;
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.symbol-remove:hover {
+  background: #991b1b;
+}
+.import-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.import-btn {
+  border-radius: 6px;
+  border: 1px dashed #475569;
+  background: transparent;
+  color: #cbd5e1;
+  cursor: pointer;
+}
+.import-btn:hover {
+  border-color: #22c55e;
+  color: #e2e8f0;
+}
+.import-hint {
+  font-size: 11px;
+  color: #64748b;
+}
+.msg-inline {
+  font-size: 12px;
+}
+
+/* Hint under the form title explaining the ${icon name} syntax */
+.insert-hint {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0 0 10px;
+}
+.insert-hint code {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 1px 4px;
+  color: #e2e8f0;
+}
+
+/* Toast after an icon name is copied — pinned to the bottom of the viewport
+   so it is always visible regardless of scroll position. */
+.copied-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: #052e16;
+  background: #86efac;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }

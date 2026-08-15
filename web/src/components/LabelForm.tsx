@@ -7,6 +7,7 @@ import nutSvg from "../assets/nut.svg?raw";
 import squareNutSvg from "../assets/square_nut.svg?raw";
 import nylockSvg from "../assets/nylock.svg?raw";
 import phillipsSvg from "../assets/phillips.svg?raw";
+import pozidrivSvg from "../assets/pozidriv.svg?raw";
 import slotSvg from "../assets/slot.svg?raw";
 import torxSvg from "../assets/torx.svg?raw";
 import washerSvg from "../assets/washer.svg?raw";
@@ -36,6 +37,7 @@ const CLIPARTS = [
   { id: "nylock",       label: "Nylock",      svg: nylockSvg,      viewBox: "477 549 137 120" },
   { id: "wingnut",      label: "Wingnut",     svg: wingnutSvg,     viewBox: "16 16 168 102" },
   { id: "phillips",     label: "Phillips",    svg: phillipsSvg,    viewBox: "81 51 112 112" },
+  { id: "pozidriv",     label: "Pozidriv",    svg: pozidrivSvg,    viewBox: "81 51 112 112" },
   { id: "robertson",    label: "Robertson",   svg: robertsonSvg,   viewBox: "47 47 120 120" },
   { id: "slot",         label: "Slot",        svg: slotSvg,        viewBox: "35 125 125 113" },
   { id: "torx",         label: "Torx",        svg: torxSvg,        viewBox: "541 127 112 112" },
